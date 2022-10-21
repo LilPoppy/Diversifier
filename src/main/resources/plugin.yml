@@ -1,0 +1,4 @@
+name: Diversifier
+version: '${project.version}'
+main: org.cobnet.mc.diversifier.plugin.spigot.SpigotPlugin
+api-version: 1.19
