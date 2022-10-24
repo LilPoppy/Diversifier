@@ -2,8 +2,12 @@ package org.cobnet.mc.diversifier.plugin.support;
 
 import org.cobnet.mc.diversifier.Diversifier;
 import org.cobnet.mc.diversifier.exception.MissingResourceException;
-import org.cobnet.mc.diversifier.plugin.*;
+import org.cobnet.mc.diversifier.plugin.MemberFactory;
+import org.cobnet.mc.diversifier.plugin.PluginAssembly;
+import org.cobnet.mc.diversifier.plugin.TypeAssembly;
+import org.cobnet.mc.diversifier.plugin.TypeFactory;
 import org.cobnet.mc.diversifier.utils.BooleanUtils;
+import org.cobnet.mc.diversifier.utils.LoopUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -29,13 +33,13 @@ public class ManagedTypeFactory implements TypeFactory {
     public @NotNull List<String> getPackageNames() {
         if(this.packageNames != null) return this.packageNames;
         this.packageNames = new ArrayList<>();
-        this.packageNames.addAll(traverse_package_names(root, new StringBuilder()));
+        this.packageNames.addAll(get_package_names(root, new StringBuilder()));
         return Collections.unmodifiableList(this.packageNames);
     }
 
     @Override
     public @NotNull Stream<TypeAssembly<?>> getTypesAsStream() {
-        return traverse_package_types_stream(get_node(""));
+        return get_all_package_types__stream(get_node(""));
     }
 
     @Override
@@ -47,11 +51,11 @@ public class ManagedTypeFactory implements TypeFactory {
     @Override
     public @NotNull TypeAssembly<?>[] getAllTypesByPackage(@NotNull String packageName) {
         Objects.requireNonNull(packageName, "Package name cannot be null.");
-        return traverse_package_types_stream(get_node(packageName)).toArray(TypeAssembly[]::new);
+        return get_all_package_types__stream(get_node(packageName)).toArray(TypeAssembly[]::new);
     }
 
     @Override
-    public @Nullable <T> TypeAssembly<T> loadClass(@NotNull PluginAssembly<?> assembly, @NotNull Class<T> type) throws NoSuchMethodException {
+    public @Nullable <T> TypeAssembly<T> loadClass(@NotNull PluginAssembly<?> assembly, @NotNull Class<T> type) {
         Objects.requireNonNull(assembly, "Assembly cannot be null.");
         Objects.requireNonNull(type, "Type cannot be null.");
         String packageName = type.getPackageName();
@@ -75,7 +79,7 @@ public class ManagedTypeFactory implements TypeFactory {
     public @Nullable TypeAssembly<?> loadClass(@NotNull PluginAssembly<?> assembly, @NotNull String packageName, @NotNull String className) {
         Objects.requireNonNull(assembly, "Assembly cannot be null.");
         Objects.requireNonNull(packageName, "Package name cannot be null.");
-        Objects.requireNonNull(className, "File name cannot be null.");
+        Objects.requireNonNull(className, "Class name cannot be null.");
         Node node = get_node(packageName);
         TypeAssembly<?> type = node.get(className);
         if(type != null) return type;
@@ -144,16 +148,16 @@ public class ManagedTypeFactory implements TypeFactory {
         return this.size;
     }
 
-    private Stream<TypeAssembly<?>> traverse_package_types_stream(Node node) {
+    private Stream<TypeAssembly<?>> get_all_package_types__stream(Node node) {
         if(node == null) return Stream.empty();
         Stream<TypeAssembly<?>> types = Stream.empty();
         for(Node child : node.children) {
-            types = Stream.concat(types, traverse_package_types_stream(child));
+            types = Stream.concat(types, get_all_package_types__stream(child));
         }
         return Stream.concat(types, node.types.values().stream());
     }
 
-    private List<String> traverse_package_names(Node node, StringBuilder sb) {
+    private List<String> get_package_names(Node node, StringBuilder sb) {
         List<String> packages = new ArrayList<>();
         if (node == null) return packages;
         int len = node.name.length() > 0 ? 1 : 0;
@@ -166,7 +170,7 @@ public class ManagedTypeFactory implements TypeFactory {
         packages.add(sb.toString());
         if (len > 0) sb.append(".");
         for (Node child : node.children) {
-            packages.addAll(traverse_package_names(child, sb));
+            packages.addAll(get_package_names(child, sb));
         }
         pop_end(sb, node.name.length() + len, sb.length());
         return packages;
@@ -177,13 +181,13 @@ public class ManagedTypeFactory implements TypeFactory {
     }
 
     private Node get_node(String packageName) {
-        if(this.node != null && this.node.packageName.equals(packageName)) return this.node.node;
+        if(this.node != null && this.node.name.equals(packageName)) return this.node.node;
         char[] chars = packageName.toCharArray();
         Node node = root;
-        for (int i = 0, j = 0, n = chars.length, k = 0; i < n; i++, k = BooleanUtils.toInt(n - 1 == i)) {
+        for (int i = 0, j = 0, n = chars.length, k = 0; i < n; i++, k = BooleanUtils.toIntAsBinary(LoopUtils.isTouchEnd(i, n))) {
             if (chars[i] == '.' || k > 0) {
                 String name = new String(chars, j, i - j + k);
-                node = node.getChild(name);
+                node = node.get_child(name);
                 j = i + 1;
             }
         }
@@ -193,12 +197,12 @@ public class ManagedTypeFactory implements TypeFactory {
 
     final static class PackageNode {
 
-        final String packageName;
+        final String name;
 
         final Node node;
 
-        private PackageNode(String packageName, Node node) {
-            this.packageName = packageName;
+        private PackageNode(String name, Node node) {
+            this.name = name;
             this.node = node;
         }
     }
@@ -225,12 +229,14 @@ public class ManagedTypeFactory implements TypeFactory {
             return this.current;
         }
 
-        private Node getChild(String name) {
-            for (Node child : children) if (child.name.equals(name)) return child;
+        private Node get_child(String name) {
+            for (Node child : children) if (child.name.equals(name))
+                return child;
             Node node = new Node(name);
             children.add(node);
             return node;
         }
+
 
         @Override
         public boolean equals(Object o) {

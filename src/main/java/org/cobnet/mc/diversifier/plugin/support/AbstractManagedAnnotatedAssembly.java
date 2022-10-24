@@ -3,7 +3,6 @@ package org.cobnet.mc.diversifier.plugin.support;
 import org.cobnet.mc.diversifier.Diversifier;
 import org.cobnet.mc.diversifier.plugin.annotation.Signal;
 import org.cobnet.mc.diversifier.plugin.*;
-import org.cobnet.mc.diversifier.utils.ProxyUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.annotation.Annotation;
@@ -34,7 +33,6 @@ public abstract class AbstractManagedAnnotatedAssembly<T extends AnnotatedElemen
         Set<Annotation> annotations = new HashSet<>();
         for(Annotation annotation : this.get().getAnnotations()) {
             if(annotation instanceof Signal signal) {
-                System.out.println(ProxyUtils.createProxy(Signal.class).name());
 
             }
             annotations.add(annotation);

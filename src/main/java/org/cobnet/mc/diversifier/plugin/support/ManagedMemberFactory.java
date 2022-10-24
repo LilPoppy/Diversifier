@@ -14,7 +14,7 @@ import java.util.stream.Stream;
 
 public class ManagedMemberFactory implements MemberFactory {
 
-    private Node root;
+    private volatile Node root;
 
     private transient int size;
 

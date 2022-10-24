@@ -16,11 +16,14 @@ public abstract class AbstractPlatformContext<T extends Plugin> implements Platf
 
     private final ProxyFactory proxyFactory;
 
-    protected AbstractPlatformContext(T plugin, PluginFactory pluginFactory, TypeFactory typeFactory, MemberFactory memberFactory, ProxyFactory proxyFactory) {
+    private final Configuration configuration;
+
+    protected AbstractPlatformContext(T plugin, PluginFactory pluginFactory, TypeFactory typeFactory, MemberFactory memberFactory, ProxyFactory proxyFactory, Configuration configuration) {
         this.plugin = plugin;
         this.pluginFactory = pluginFactory;
         this.typeFactory = typeFactory;
         this.memberFactory = memberFactory;
         this.proxyFactory = proxyFactory;
+        this.configuration = configuration;
     }
 }

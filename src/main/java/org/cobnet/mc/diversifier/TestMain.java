@@ -1,26 +1,23 @@
 package org.cobnet.mc.diversifier;
 
-import org.cobnet.mc.diversifier.plugin.annotation.Signal;
-import org.cobnet.mc.diversifier.utils.ProxyUtils;
+import org.cobnet.mc.diversifier.external.JarFileScanner;
+import org.cobnet.mc.diversifier.reference.GlobalPluginConfiguration;
 
+import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
 public class TestMain {
 
-    public static void main(String[] args) throws IOException, NoSuchMethodException {
-        //Fun.toMethod(TestMain::main);
+    public static void main(String[] args) throws IOException, IllegalAccessException {
+        GlobalPluginConfiguration.writeYAML(new File("/Users/lilpoppy/Downloads/MC-SERVER/plugins/Diversifier/config.yml"));
+        JarFileScanner scanner = new JarFileScanner("/Users/lilpoppy/IdeaProjects/mc/Diversifier/target/Diversifier-1.0-SNAPSHOT.jar", List.of(".class"), List.of("org.yaml.*"));
         long ms = System.currentTimeMillis();
-        TestMain.class.getMethod("main", String[].class);
-        //Fun.toMethod(TestMain::main);
-        System.out.println("Took " + (System.currentTimeMillis() - ms) + "ms");
+        for(int i = 0; i < 1; i++) {
+            System.out.println(scanner.scan().keySet());
+        }
+        System.out.println("Time: " + (System.currentTimeMillis() - ms) + "ms");
 
-        System.out.println((ProxyUtils.createProxy(Signal.class) instanceof Signal));
-//        JarFileScanner scanner = new JarFileScanner("/Users/lilpoppy/IdeaProjects/mc/Diversifier/target/Diversifier-1.0-SNAPSHOT.jar");
-//        long ms = System.currentTimeMillis();
-//        for(int i = 0; i < 1; i++) {
-//            System.out.println(scanner.scan());
-//        }
-//        System.out.println("Time: " + (System.currentTimeMillis() - ms) + "ms");
 //
 //
 //        HashMap<String, String> map = new HashMap<>();

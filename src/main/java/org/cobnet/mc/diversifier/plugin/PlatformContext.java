@@ -13,4 +13,6 @@ public interface PlatformContext<T extends Plugin> {
     public MemberFactory getMemberFactory();
 
     public ProxyFactory getProxyFactory();
+
+    public Configuration getConfiguration();
 }

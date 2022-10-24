@@ -4,7 +4,9 @@ public interface ProxyContext<T> {
 
     public String getName();
 
-    public T getProxy();
+    public default T getProxy() {
+        return (T) this;
+    }
 
     public Scope getScope();
 

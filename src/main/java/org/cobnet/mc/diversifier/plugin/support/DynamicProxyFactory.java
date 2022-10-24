@@ -1,9 +1,10 @@
 package org.cobnet.mc.diversifier.plugin.support;
 
 import lombok.Getter;
-import net.sf.cglib.proxy.Enhancer;
-import net.sf.cglib.proxy.MethodInterceptor;
-import net.sf.cglib.proxy.MethodProxy;
+import net.bytebuddy.ByteBuddy;
+import net.bytebuddy.dynamic.DynamicType;
+import net.bytebuddy.implementation.MethodDelegation;
+import net.bytebuddy.pool.TypePool;
 import org.cobnet.mc.diversifier.Diversifier;
 import org.cobnet.mc.diversifier.exception.ProxyException;
 import org.cobnet.mc.diversifier.plugin.*;
@@ -11,6 +12,7 @@ import org.cobnet.mc.diversifier.plugin.enums.ProxyScope;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -29,27 +31,18 @@ public class DynamicProxyFactory implements ProxyFactory {
         this.chain = new AnnotationMethodInterceptor();
     }
 
-    final <T> ProxyContext<T> create_proxy(String name, TypeAssembly<T> type, Object... args) throws ProxyException {
+    final <T> ProxyContext<T> create_proxy(String name, TypeAssembly<T> type, Object... args) throws ProxyException, NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
         if(Modifier.isFinal(type.get().getModifiers())) throw new ProxyException("Cannot create proxy for final class " + type.get().getName());
-        Enhancer enhancer = new Enhancer();
-        enhancer.setSuperclass(type.get());
-        //if(type.isAnnotationType())
-        enhancer.setInterfaces(new Class[]{ProxyContext.class, type.get()});
-        //else enhancer.setInterfaces(new Class[]{ProxyContext.class});
-        enhancer.setCallback(new DynamicProxyContext<>(name, type, ProxyScope.SINGLETON, this.chain));
-        ProxyContext<T> context = (ProxyContext<T>) enhancer.create(Arrays.stream(args).map(Object::getClass).toArray(Class[]::new), args);
+        DynamicType.Unloaded<T> unloaded = new ByteBuddy().subclass(type.get()).implement(ProxyContext.class).make();
+        ///.make(new DynamicProxyFactory.DynamicProxyContext(name, type, ProxyScope.SINGLETON, this.chain))
+        ProxyContext<T> context = (ProxyContext<T>) unloaded.load(type.get().getClassLoader()).getLoaded().getConstructor(Arrays.stream(args).map(Object::getClass).toArray(Class[]::new)).newInstance(args);
+
         this.contexts.put(type.get(), context);
-//
-//        ProxyContext<T> context = (ProxyContext<T>) contexts.get(type.get());
-//        if(context == null) {
-//            context = new DynamicProxyContext<>(name, type, args);
-//            contexts.put(type.get(), context);
-//        }
         return context;
     }
 
     @Override
-    public <T> @NotNull T create(@NotNull String name, @NotNull Class<T> type, Object... args) throws ProxyException {
+    public <T> @NotNull T create(@NotNull String name, @NotNull Class<T> type, Object... args) throws ProxyException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         return create(name, Objects.requireNonNull(Diversifier.getTypeFactory().getTypeAssembly(type), "Type assembly for type " + type.getName() + " not found."), args);
     }
 
@@ -59,7 +52,7 @@ public class DynamicProxyFactory implements ProxyFactory {
     }
 
     @Override
-    public <T> @NotNull T create(@NotNull String name, @NotNull TypeAssembly<T> type, Object... args) throws ProxyException {
+    public <T> @NotNull T create(@NotNull String name, @NotNull TypeAssembly<T> type, Object... args) throws ProxyException, InvocationTargetException, NoSuchMethodException, InstantiationException, IllegalAccessException {
         return (T) create_proxy(name, type, args);
     }
 
@@ -94,7 +87,7 @@ public class DynamicProxyFactory implements ProxyFactory {
     }
 
 
-    record DynamicProxyContext<T>(@Getter String name, @Getter TypeAssembly<T> assembly, @Getter Scope scope, @Getter ProxyMethodInterceptor chain, Map<Class<?>, Map<Method, Object>> methods) implements MethodInterceptor, ProxyContext<T> {
+    public record DynamicProxyContext<T>(@Getter String name, @Getter TypeAssembly<T> assembly, @Getter Scope scope, @Getter ProxyMethodInterceptor chain, Map<Class<?>, Map<Method, Object>> methods) implements ProxyContext<T> {
 
         final static Method GET_NAME_METHOD;
 
@@ -137,24 +130,19 @@ public class DynamicProxyFactory implements ProxyFactory {
             this(name, assembly, ProxyScope.SINGLETON, chain, new HashMap<>());
         }
 
-        @Override
-        public Object intercept(Object obj, Method method, Object[] args, MethodProxy proxy) throws Throwable {
-            if(method.equals(DynamicProxyContext.GET_NAME_METHOD)) return this.name();
-            if(method.equals(DynamicProxyContext.GET_PROXY_METHOD)) return obj;
-            if(method.equals(DynamicProxyContext.GET_ASSEMBLY_METHOD)) return this.assembly();
-            if(method.equals(DynamicProxyContext.GET_SCOPE_METHOD)) return this.scope();
-            if(method.equals(DynamicProxyContext.GET_CHAIN_METHOD)) return this.chain();
-            if(method.equals(DynamicProxyContext.ADD_METHOD_METHOD)) {
-                 this.addMethod((MethodAssembly<?>) args[0], args[1]);
-                 return obj;
-            }
-            return this.chain().intercept(obj, method, args, proxy);
-        }
-
-        @Override
-        public T getProxy() {
-            throw new UnsupportedOperationException("Not implemented yet");
-        }
+//        @Override
+//        public Object intercept(Object obj, Method method, Object[] args, MethodProxy proxy) throws Throwable {
+//            if(method.equals(DynamicProxyContext.GET_NAME_METHOD)) return this.name();
+//            if(method.equals(DynamicProxyContext.GET_PROXY_METHOD)) return obj;
+//            if(method.equals(DynamicProxyContext.GET_ASSEMBLY_METHOD)) return this.assembly();
+//            if(method.equals(DynamicProxyContext.GET_SCOPE_METHOD)) return this.scope();
+//            if(method.equals(DynamicProxyContext.GET_CHAIN_METHOD)) return this.chain();
+//            if(method.equals(DynamicProxyContext.ADD_METHOD_METHOD)) {
+//                 this.addMethod((MethodAssembly<?>) args[0], args[1]);
+//                 return obj;
+//            }
+//            return this.chain().intercept(obj, method, args, proxy);
+//        }
 
         @Override
         public ProxyContext<T> addMethod(MethodAssembly<?> method, Object value) {
