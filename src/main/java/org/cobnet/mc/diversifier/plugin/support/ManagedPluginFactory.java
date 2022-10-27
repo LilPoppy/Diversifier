@@ -70,7 +70,7 @@ public class ManagedPluginFactory implements PluginFactory {
             Diversifier.getLogger().log(LoggerLevel.INFO, "Loaded " + factory.getSize() + " types for '" + plugin + "' in " + (System.currentTimeMillis() - ms) + "ms.");
 
             //DEBUGGING
-            //factory.getPackageNames().forEach(System.out::println);
+            factory.getPackageNames().forEach(System.out::println);
             factory.getTypesAsStream().forEach(System.out::println);
             if(Diversifier.getProxyFactory() instanceof DynamicProxyFactory manager) {
                 System.out.println(manager.create_proxy("test", factory.getTypeAssembly(Signal.class)).addMethod(new ManagedMethodAssembly(factory.getTypeAssembly(Signal.class), Signal.class.getMethod("name")), "TETETETE").getProxy().name());

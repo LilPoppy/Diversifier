@@ -1,7 +1,10 @@
 package org.cobnet.mc.diversifier.plugin.support;
 
 import lombok.Getter;
+import org.cobnet.mc.diversifier.Diversifier;
 import org.cobnet.mc.diversifier.plugin.*;
+
+import java.nio.file.FileSystems;
 
 @Getter
 public abstract class AbstractPlatformContext<T extends Plugin> implements PlatformContext<T> {

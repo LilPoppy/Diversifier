@@ -1,4 +1,4 @@
-package org.cobnet.mc.diversifier.plugin.spigot;
+package org.cobnet.mc.diversifier.plugin.support.spigot;
 
 import org.bukkit.plugin.java.JavaPlugin;
 import org.cobnet.mc.diversifier.Diversifier;

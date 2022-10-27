@@ -5,10 +5,7 @@ import org.cobnet.mc.diversifier.plugin.Version;
 import org.cobnet.mc.diversifier.utils.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UnknownFormatConversionException;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public record ComparableVersion(@Getter String version) implements Version {
@@ -59,11 +56,9 @@ public record ComparableVersion(@Getter String version) implements Version {
             Map<String, AtomicInteger> dp = DP.get(x[i]);
             if (dp != null) {
                 AtomicInteger n = dp.get(y[i]);
-                if (n != null) {
-                    ret = n.get();
-                } else ret = compare_dp(x[i], y[i]);
-
-            } else ret = compare_dp(x[i], y[i]);
+                if (n != null) ret = n.get();
+                else ret = compare(x[i], y[i]);
+            } else ret = compare(x[i], y[i]);
             if (ret != 0) return ret;
         }
         if (x.length < y.length) return -1;
@@ -71,8 +66,8 @@ public record ComparableVersion(@Getter String version) implements Version {
         return 0;
     }
 
-    private int compare_dp(String x, String y) {
-        int ret = compare(x, y);
+    private int compare(String x, String y) {
+        int ret = compare(x.toCharArray(), y.toCharArray());
         Map<String, AtomicInteger> dp = ComparableVersion.DP.get(x);
         if (dp == null) dp = new HashMap<>();
         dp.put(y, new AtomicInteger(ret));
@@ -80,46 +75,46 @@ public record ComparableVersion(@Getter String version) implements Version {
         return ret;
     }
 
-    private int compare(String x, String y) {
-        if (StringUtils.isInteger(x) && StringUtils.isInteger(y))
-            return Integer.compare(Integer.parseInt(x), Integer.parseInt(y));
+    private int compare(char[] x, char[] y) {
+        if (StringUtils.isInteger(new String(x)) && StringUtils.isInteger(new String(y)))
+            return Integer.compare(Integer.parseInt(new String(x)), Integer.parseInt(new String(y)));
         else {
-            int xIdx = shift_num_index(x) + 1;
-            int yIdx = shift_num_index(y) + 1;
+            int xIdx = skip_index_num(x) + 1;
+            int yIdx = skip_index_num(y) + 1;
             if (xIdx == -1) throw new UnknownFormatConversionException("Unknown format: " + x);
             if (yIdx == -1) throw new UnknownFormatConversionException("Unknown format: " + y);
-            int ret = compare(x.substring(0, xIdx), y.substring(0, yIdx));
+            int ret = compare(Arrays.copyOfRange(x, 0, xIdx), Arrays.copyOfRange(y, 0, yIdx));
             if (ret != 0) return ret;
-            if (x.length() == xIdx) return compare_default_str(y, yIdx);
-            if (y.length() == yIdx) return compare_default_str(x, xIdx);
-            xIdx = push_index(x, x.charAt(xIdx), xIdx) + 1;
-            yIdx = push_index(y, y.charAt(yIdx), yIdx) + 1;
-            return compare_str(x.substring(xIdx), y.substring(yIdx));
+            if (x.length == xIdx) return compare_default_str(y, yIdx);
+            if (y.length == yIdx) return compare_default_str(x, xIdx);
+            xIdx = push_index_alph(x, x[xIdx], xIdx) + 1;
+            yIdx = push_index_alph(y, y[yIdx], yIdx) + 1;
+            return chs_compare(Arrays.copyOfRange(x, xIdx, x.length), Arrays.copyOfRange(y, yIdx, y.length));
         }
     }
 
-    private int compare_default_str(String s, int idx) {
-        return Integer.compare(ComparableVersion.VERSION_STR(s.substring(push_index(s, s.charAt(idx), idx) + 1)), ComparableVersion.DEFAULT_VERSION_INT);
+    private int compare_default_str(char[] chs, int idx) {
+        return Integer.compare(ComparableVersion.VERSION_STR(new String(Arrays.copyOfRange(chs, push_index_alph(chs, chs[idx], idx), chs.length))), ComparableVersion.DEFAULT_VERSION_INT);
     }
 
-    private int compare_str(String x, String y) {
-        return Integer.compare(ComparableVersion.VERSION_STR(x), ComparableVersion.VERSION_STR(y));
+    private int chs_compare(char[] x, char[] y) {
+        return Integer.compare(ComparableVersion.VERSION_STR(new String(x)), ComparableVersion.VERSION_STR(new String(y)));
     }
 
-    private int shift_num_index(String s) {
+    private int skip_index_num(char[] chs) {
         int idx = -1;
-        for (int i = 0; i < s.length(); i++) {
-            if (Character.isDigit(s.charAt(i))) idx = i;
+        for (int i = 0; i < chs.length; i++) {
+            if (Character.isDigit(chs[i])) idx = i;
             else return idx;
         }
         return idx;
     }
 
-    private int push_index(String s, char c, int idx) {
-        if (idx >= s.length()) return -1;
+    private int push_index_alph(char[] chs, char c, int idx) {
+        if (idx >= chs.length) return -1;
         if (Character.isAlphabetic(c)) return idx;
-        for (int i = idx; i < s.length(); i++) {
-            if (s.charAt(i) == c) return i;
+        for (int i = idx; i < chs.length; i++) {
+            if (chs[i] == c) return i;
         }
         return -1;
     }

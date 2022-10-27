@@ -3,10 +3,9 @@ package org.cobnet.mc.diversifier;
 import org.cobnet.mc.diversifier.plugin.*;
 import org.cobnet.mc.diversifier.plugin.annotation.Signal;
 import org.cobnet.mc.diversifier.plugin.annotation.Tester;
-import org.cobnet.mc.diversifier.plugin.spigot.SpigotPlatformContext;
-import org.cobnet.mc.diversifier.plugin.spigot.SpigotPlugin;
+import org.cobnet.mc.diversifier.plugin.support.spigot.SpigotPlatformContext;
+import org.cobnet.mc.diversifier.plugin.support.spigot.SpigotPlugin;
 
-import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.logging.Logger;
 

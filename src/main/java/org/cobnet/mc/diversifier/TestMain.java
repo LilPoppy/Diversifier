@@ -1,17 +1,20 @@
 package org.cobnet.mc.diversifier;
 
 import org.cobnet.mc.diversifier.external.JarFileScanner;
+import org.cobnet.mc.diversifier.plugin.support.ComparableVersion;
 import org.cobnet.mc.diversifier.reference.GlobalPluginConfiguration;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URISyntaxException;
+import java.nio.file.FileSystems;
 import java.util.List;
 
 public class TestMain {
 
     public static void main(String[] args) throws IOException, IllegalAccessException {
-        GlobalPluginConfiguration.writeYAML(new File("/Users/lilpoppy/Downloads/MC-SERVER/plugins/Diversifier/config.yml"));
-        JarFileScanner scanner = new JarFileScanner("/Users/lilpoppy/IdeaProjects/mc/Diversifier/target/Diversifier-1.0-SNAPSHOT.jar", List.of(".class"), List.of("org.yaml.*"));
+        GlobalPluginConfiguration.writeYAML(new File("C:\\Users\\LilPoppy\\Downloads\\MCSERVER\\plugins\\Diversifier\\config.yml"));
+        JarFileScanner scanner = new JarFileScanner("C:\\Users\\LilPoppy\\Downloads\\MCSERVER\\plugins\\Diversifier-1.0-SNAPSHOT.jar", List.of(".class"), List.of("org.yaml.*"));
         long ms = System.currentTimeMillis();
         for(int i = 0; i < 1; i++) {
             System.out.println(scanner.scan().keySet());
@@ -34,6 +37,10 @@ public class TestMain {
 //        }
 //        ms = System.nanoTime();
 //        for(int i = 0; i < 1000; i++) {
+
+
+
+
 //            if(list.get(i).equals("test" + 40)) {
 //                System.out.println("Found");
 //                break;

@@ -1,4 +1,4 @@
-package org.cobnet.mc.diversifier.plugin.spigot.listener;
+package org.cobnet.mc.diversifier.plugin.support.spigot.listener;
 
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
