@@ -1,42 +1,23 @@
 package org.cobnet.mc.diversifier.plugin;
 
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
+import java.util.stream.Stream;
 
 
 public interface Assembly<T, V extends HierarchicalAssembly<?, ?, ?>> {
 
-    /**
-     * Get the instance of the assembly represented by this context.
-     * @return The instance of the context.
-     */
-    public @NotNull T get();
-
-    /**
-     * Get the name of the context.
-     * @return The name of the assembly
-     */
     public @NotNull String getName();
 
-    /**
-     * Get the children context of specific name.
-     * @param name the name of the assembly
-     * @return The child assembly
-     */
-    public @NotNull List<V> getChildren(String name);
+    public @NotNull Stream<V> getChildrenAsStream();
 
-    /**
-     * Get all children context names of the assembly.
-     * @return The children assemblies names
-     */
+    public default @NotNull Stream<V> getChildrenAsStream(@NotNull String name) {
+        return getChildrenAsStream().filter(child -> child.getName().equals(name));
+    }
+
     public @NotNull String[] getChildrenNames();
 
-    /**
-     * Return whether the assembly contains a child of the given name,
-     * @return whether a child with the given name is defined in the assembly
-     */
-    public boolean containsChild(String name);
-
+    public default boolean containsChild(@NotNull String name) {
+        return getChildrenAsStream().anyMatch(child -> child.getName().equals(name));
+    }
 }

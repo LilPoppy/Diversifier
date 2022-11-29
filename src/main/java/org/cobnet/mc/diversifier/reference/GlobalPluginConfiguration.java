@@ -1,6 +1,7 @@
 package org.cobnet.mc.diversifier.reference;
 
 import org.cobnet.mc.diversifier.Diversifier;
+import org.cobnet.mc.diversifier.plugin.annotation.ConfigurationProperty;
 import org.cobnet.mc.diversifier.plugin.support.YAMLConfiguration;
 
 import java.io.File;
@@ -12,9 +13,12 @@ public class GlobalPluginConfiguration {
     public static final String PLUGIN_CONFIGURATION_DIRECTORY = Diversifier.class.getSimpleName();
     public static final String PLUGIN_CONFIGURATION_FILE_NAME = "config.yml";
 
+    @ConfigurationProperty(name = "plugin.version.order")
+    public static final String[] VERSION_ORDER = { "alpha", "beta", "rc", "snapshot", "dev", "test", "release", "stable", "final", "latest" };
+    @ConfigurationProperty(name = "plugin.version.default")
+    public static final String VERSION_DEFAULT = "snapshot";
     @ConfigurationProperty(name = "plugin.class-loader.file-extensions")
     public static final String[] CLASS_LOADER_FILE_EXTENSIONS = { ".class" };
-
     @ConfigurationProperty(name = "plugin.class-loader.excluded-packages")
     public static final String[] CLASS_LOADER_EXCLUDED_PACKAGES = { "lombok.*", "org.intellij.*", "org.jetbrains.*", "org.yaml.*", "com.fasterxml.*", "net.bytebuddy.*", "META-INF.*" };
 
@@ -27,6 +31,5 @@ public class GlobalPluginConfiguration {
         }
         configuration.save();
     }
-
 
 }

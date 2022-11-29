@@ -1,4 +1,4 @@
-package org.cobnet.mc.diversifier.reference;
+package org.cobnet.mc.diversifier.plugin.annotation;
 
 import java.lang.annotation.*;
 

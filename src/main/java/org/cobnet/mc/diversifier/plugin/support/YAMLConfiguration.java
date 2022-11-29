@@ -15,7 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class YAMLConfiguration extends AbstractConfiguration implements PluginConfiguration {
+public class YAMLConfiguration extends AbstractConfiguration {
 
     private final File file;
 
@@ -93,15 +93,5 @@ public class YAMLConfiguration extends AbstractConfiguration implements PluginCo
     public void load() throws IOException {
         this.map.clear();
         if(this.file.exists()) this.map.putAll(new ObjectMapper(new YAMLFactory()).readValue(this.file, Map.class));
-    }
-
-    @Override
-    public List<String> getClassLoaderFileExtensions() {
-        return (List<String>) this.get("plugin.class-loader.file-extensions");
-    }
-
-    @Override
-    public List<String> getClassLoaderExcludedPackages() {
-        return (List<String>) this.get("plugin.class-loader.excluded-packages");
     }
 }

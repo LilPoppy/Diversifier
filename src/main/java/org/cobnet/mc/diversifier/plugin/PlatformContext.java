@@ -1,18 +1,14 @@
 package org.cobnet.mc.diversifier.plugin;
 
-public interface PlatformContext<T extends Plugin> {
+import org.jetbrains.annotations.NotNull;
 
-    public T getPlugin();
+public interface PlatformContext<T extends ManagedPlugin> {
 
-    public PlatformContext<T> run(Object... args);
+    public @NotNull T getPlugin();
 
-    public PluginFactory getPluginFactory();
+    public @NotNull PluginFactory getPluginFactory();
 
-    public TypeFactory getTypeFactory();
+    public @NotNull ProxyFactory getProxyFactory();
 
-    public MemberFactory getMemberFactory();
-
-    public ProxyFactory getProxyFactory();
-
-    public Configuration getConfiguration();
+    //public @NotNull FunctionFactory getFunctionFactory();
 }

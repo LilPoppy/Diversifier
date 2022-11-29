@@ -9,6 +9,8 @@ import java.util.stream.Stream;
 
 public interface TypeFactory {
 
+    public @NotNull MemberFactory getMemberFactory();
+
     public @NotNull List<String> getPackageNames();
 
     public @NotNull Stream<TypeAssembly<?>> getTypesAsStream();
@@ -17,13 +19,15 @@ public interface TypeFactory {
 
     public @NotNull TypeAssembly<?>[] getAllTypesByPackage(@NotNull String packageName);
 
-    public @Nullable <T> TypeAssembly<T> loadClass(@NotNull PluginAssembly<?> assembly, @NotNull Class<T> type) throws NoSuchMethodException;
+    public @Nullable <T, E extends TypeAssembly<T>> E loadClass(@NotNull PluginAssembly<?> assembly, @NotNull Class<T> type);
 
-    public @Nullable TypeAssembly<?> loadClass(@NotNull PluginAssembly<?> assembly, @NotNull String className);
+    public @Nullable <E extends TypeAssembly<?>> E loadClass(@NotNull PluginAssembly<?> assembly, @NotNull String className);
 
-    public @Nullable TypeAssembly<?> loadClass(@NotNull PluginAssembly<?> assembly, @NotNull String packageName, @NotNull String className);
+    public @Nullable <E extends TypeAssembly<?>> E loadClass(@NotNull PluginAssembly<?> assembly, @NotNull String packageName, @NotNull String className);
 
-    public @Nullable <T> TypeAssembly<T> getTypeAssembly(@NotNull Class<T> type);
+    public @Nullable <T, E extends TypeAssembly<T>> E getTypeAssembly(@NotNull Class<T> type);
+
+    public @Nullable <T, E extends ProxyTypeAssembly<? extends T>> E getProxyTypeAssembly(@NotNull Class<T> type);
 
     public @NotNull <T> TypeAssembly<? extends T>[] getSubTypesOf(@NotNull Class<T> type) throws MissingResourceException;
 

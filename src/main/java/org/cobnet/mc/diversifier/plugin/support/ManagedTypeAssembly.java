@@ -2,24 +2,20 @@ package org.cobnet.mc.diversifier.plugin.support;
 
 import org.cobnet.mc.diversifier.Diversifier;
 import org.cobnet.mc.diversifier.exception.MissingResourceException;
-import org.cobnet.mc.diversifier.plugin.MemberAssembly;
-import org.cobnet.mc.diversifier.plugin.PluginAssembly;
-import org.cobnet.mc.diversifier.plugin.TypeAssembly;
-import org.cobnet.mc.diversifier.plugin.TypeFactory;
+import org.cobnet.mc.diversifier.plugin.*;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.Set;
+import java.lang.reflect.InvocationTargetException;
+import java.util.*;
 
-public class ManagedTypeAssembly<T> extends AbstractManagedAnnotatedAssembly<Class<T>, PluginAssembly<?>, MemberAssembly<?, ?>> implements TypeAssembly<T> {
+sealed class ManagedTypeAssembly<T> extends AbstractManagedAnnotatedAssembly<Class<T>, PluginAssembly<?>, MemberAssembly<T, ?>> implements TypeAssembly<T>, ProxyTypeAssemblyGenerator<T> permits DynamicProxyTypeAssembly, ManagedAnnotationTypeAssembly {
 
     protected transient TypeAssembly<? extends T>[] subTypes;
 
     transient int modSize;
 
-    protected ManagedTypeAssembly(PluginAssembly<?> parent, Class<T> instance) {
-        super(parent, instance);
+    protected ManagedTypeAssembly(PluginAssembly<?> parent, Class<T> type, List<MemberAssembly<T, ?>> members) {
+        super(parent, type, members);
     }
 
     @Override
@@ -41,8 +37,13 @@ public class ManagedTypeAssembly<T> extends AbstractManagedAnnotatedAssembly<Cla
     }
 
     @Override
+    public boolean isSubTypeOf(@NotNull TypeAssembly<?> type) {
+        return type.isSuperTypeOf(this.instance);
+    }
+
+    @Override
     public boolean isSubTypeOf(@NotNull Class<?> type) {
-        return type.isAssignableFrom(this.get()) && type != this.get();
+        return type.isAssignableFrom(this.instance) && type != this.instance;
     }
 
     private Set<Class<?>> traverse_superclasses(Class<?> type) {
@@ -61,7 +62,7 @@ public class ManagedTypeAssembly<T> extends AbstractManagedAnnotatedAssembly<Cla
     @Override
     public @NotNull TypeAssembly<? super T>[] getSuperTypes() {
         TypeFactory factory = Diversifier.getTypeFactory();
-        Set<Class<?>> types = traverse_superclasses(this.get());
+        Set<Class<?>> types = traverse_superclasses(this.instance);
         int n = types.size(), i = 0;
         TypeAssembly<? super T>[] superTypes = new TypeAssembly[n];
         Iterator<Class<?>> it = types.iterator();
@@ -72,7 +73,7 @@ public class ManagedTypeAssembly<T> extends AbstractManagedAnnotatedAssembly<Cla
                 TypeAssembly<? super T> assembly = factory.getTypeAssembly(type);
                 if(assembly == null) continue;
                 superTypes[i++] = assembly;
-            } catch (MissingResourceException e) {}
+            } catch (MissingResourceException ignored) {}
         }
         TypeAssembly<? super T>[] ret = new TypeAssembly[i];
         System.arraycopy(superTypes, 0, ret, 0, i);
@@ -80,23 +81,67 @@ public class ManagedTypeAssembly<T> extends AbstractManagedAnnotatedAssembly<Cla
     }
 
     @Override
+    public boolean isSuperTypeOf(@NotNull TypeAssembly<?> type) {
+        return type.isSubTypeOf(this.instance);
+    }
+
+    @Override
     public boolean isSuperTypeOf(@NotNull Class<?> type) {
-        return this.get().isAssignableFrom(type) && type != this.get();
+        return this.instance.isAssignableFrom(type) && type != this.instance;
+    }
+
+    @Override
+    public boolean isAssignableFrom(@NotNull TypeAssembly<?> type) {
+        return false;
     }
 
     @Override
     public boolean isAssignableFrom(@NotNull Class<?> type) {
-        return this.get().isAssignableFrom(type);
+        return this.instance.isAssignableFrom(type);
+    }
+
+    @Override
+    public boolean isAnnotation() {
+        return false;
+    }
+
+    @Override
+    public @NotNull T create(Object... args) throws Throwable {
+        //TODO: 需要实现当参数有为null的时候自动匹配
+        Class<?>[] types = Arrays.stream(args).map(Object::getClass).toArray(Class[]::new);
+        ConstructorAssembly<T> constructor = this.getConstructor(types);
+        if(constructor == null) throw new NoSuchMethodException("No constructor found for arguments: " + Arrays.toString(types));
+        return constructor.newInstance(args);
+    }
+
+    @Override
+    public ClassLoader getClassLoader() {
+        return this.instance.getClassLoader();
     }
 
     @Override
     public @NotNull String getName() {
-        return this.get().getName();
+        return this.instance.getName();
     }
 
     @Override
     public boolean equals(Object o) {
-        if(o instanceof Class<?> type) return this.get().equals(type);
+        if(o instanceof Class<?> type) return this.instance.equals(type);
         return super.equals(o);
+    }
+
+    @Override
+    public @NotNull <E extends T> ProxyTypeAssembly<E> generate(@NotNull PluginAssembly<?> plugin, @NotNull Class<E> type, @NotNull List<MemberAssembly<E, ?>> members) {
+        return new DynamicProxyTypeAssembly<>(plugin, this, type, members);
+    }
+
+    @Override
+    public @NotNull <E extends T> ProxyTypeAssembly<E> generate(@NotNull Class<E> type, @NotNull List<MemberAssembly<E, ?>> members) {
+        return generate(this.getPluginAssembly(), type, members);
+    }
+
+    @Override
+    public int compareTo(@NotNull Class<?> o) {
+        return Integer.compare(this.instance.getName().hashCode(), o.getName().hashCode());
     }
 }

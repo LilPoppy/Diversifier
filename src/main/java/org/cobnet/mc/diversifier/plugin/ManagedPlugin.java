@@ -2,7 +2,7 @@ package org.cobnet.mc.diversifier.plugin;
 
 import java.util.logging.Logger;
 
-public interface Plugin {
+public interface ManagedPlugin {
 
     public String getName();
 

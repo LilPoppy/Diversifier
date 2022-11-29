@@ -1,18 +1,20 @@
 package org.cobnet.mc.diversifier;
 
 import org.cobnet.mc.diversifier.external.JarFileScanner;
-import org.cobnet.mc.diversifier.plugin.support.ComparableVersion;
 import org.cobnet.mc.diversifier.reference.GlobalPluginConfiguration;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URISyntaxException;
-import java.nio.file.FileSystems;
 import java.util.List;
+import java.util.stream.IntStream;
 
 public class TestMain {
 
     public static void main(String[] args) throws IOException, IllegalAccessException {
+        boolean PREVIOUS = true, NEXT = false;
+
+        System.out.println(false ^ PREVIOUS);
+        System.out.println();
         GlobalPluginConfiguration.writeYAML(new File("C:\\Users\\LilPoppy\\Downloads\\MCSERVER\\plugins\\Diversifier\\config.yml"));
         JarFileScanner scanner = new JarFileScanner("C:\\Users\\LilPoppy\\Downloads\\MCSERVER\\plugins\\Diversifier-1.0-SNAPSHOT.jar", List.of(".class"), List.of("org.yaml.*"));
         long ms = System.currentTimeMillis();

@@ -39,7 +39,7 @@ public class JarFileScanner implements AutoCloseable {
         Map<String, List<String>> map = new HashMap<>();
         Enumeration<JarEntry> entries = file.entries();
         JarEntry entry;
-        String mime = null, s;
+        String extension = null, s;
         ArrayDeque<char[]> packages = new ArrayDeque<>();
         Iterator<String> it = this.packages.iterator();
         while(it.hasNext() && (s = it.next()) != null) packages.offer(s.toCharArray());
@@ -64,9 +64,9 @@ public class JarFileScanner implements AutoCloseable {
                 if(chars[i] == '.') {
                     type = Arrays.copyOfRange(chars, i, j + 1);
                     it = this.extensions.iterator();
-                    do if(mime != null && !Arrays.equals(type, mime.toCharArray())) mime = null;
-                    while (it.hasNext() && (mime = it.next()) != null);
-                    if(mime == null) break;
+                    do if(extension != null && !Arrays.equals(type, extension.toCharArray())) extension = null;
+                    while (it.hasNext() && (extension = it.next()) != null);
+                    if(extension == null) break;
                     j = i;
                     continue;
                 }

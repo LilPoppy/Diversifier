@@ -2,26 +2,20 @@ package org.cobnet.mc.diversifier.plugin.support;
 
 import org.cobnet.mc.diversifier.plugin.Assembly;
 import org.cobnet.mc.diversifier.plugin.HierarchicalAssembly;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
 public abstract class AbstractAssembly<T, V extends HierarchicalAssembly<?, ?, ?>> implements Assembly<T, V> {
 
-    private final T instance;
+    protected final T instance;
 
     protected AbstractAssembly(T instance) {
         this.instance = instance;
     }
 
     @Override
-    public @NotNull T get() {
-        return this.instance;
-    }
-
-    @Override
     public String toString() {
-        return this.get().toString();
+        return this.instance.toString();
     }
 
     @Override

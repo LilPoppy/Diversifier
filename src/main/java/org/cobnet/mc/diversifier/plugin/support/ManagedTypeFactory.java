@@ -1,23 +1,21 @@
 package org.cobnet.mc.diversifier.plugin.support;
 
-import org.cobnet.mc.diversifier.Diversifier;
 import org.cobnet.mc.diversifier.exception.MissingResourceException;
-import org.cobnet.mc.diversifier.plugin.MemberFactory;
-import org.cobnet.mc.diversifier.plugin.PluginAssembly;
-import org.cobnet.mc.diversifier.plugin.TypeAssembly;
-import org.cobnet.mc.diversifier.plugin.TypeFactory;
+import org.cobnet.mc.diversifier.exception.ProxyException;
+import org.cobnet.mc.diversifier.plugin.*;
 import org.cobnet.mc.diversifier.utils.BooleanUtils;
 import org.cobnet.mc.diversifier.utils.LoopUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.stream.Stream;
 
-public class ManagedTypeFactory implements TypeFactory {
+final class ManagedTypeFactory implements TypeFactory {
 
     private final Node root = new Node();
 
@@ -27,7 +25,18 @@ public class ManagedTypeFactory implements TypeFactory {
 
     private transient TypeAssembly<?> current;
 
-    protected transient PackageNode node;
+    transient PackageNode node;
+
+    transient MemberFactory factory;
+
+    ManagedTypeFactory() {
+        this.factory = new ManagedMemberFactory(this);
+    }
+
+    @Override
+    public @NotNull MemberFactory getMemberFactory() {
+        return this.factory;
+    }
 
     @Override
     public @NotNull List<String> getPackageNames() {
@@ -42,10 +51,11 @@ public class ManagedTypeFactory implements TypeFactory {
         return get_all_package_types__stream(get_node(""));
     }
 
+
     @Override
     public @NotNull TypeAssembly<?>[] getTypesByPackage(@NotNull String packageName) {
-        Objects.requireNonNull(packageName, "Package name cannot be null");
-        return get_node(packageName).types.values().stream().toArray(TypeAssembly[]::new);
+        Objects.requireNonNull(packageName, "Package name cannot be null.");
+        return get_node(packageName).types.values().toArray(TypeAssembly[]::new);
     }
 
     @Override
@@ -54,8 +64,9 @@ public class ManagedTypeFactory implements TypeFactory {
         return get_all_package_types__stream(get_node(packageName)).toArray(TypeAssembly[]::new);
     }
 
+
     @Override
-    public @Nullable <T> TypeAssembly<T> loadClass(@NotNull PluginAssembly<?> assembly, @NotNull Class<T> type) {
+    public @Nullable <T, E extends TypeAssembly<T>> E loadClass(@NotNull PluginAssembly<?> assembly, @NotNull Class<T> type) {
         Objects.requireNonNull(assembly, "Assembly cannot be null.");
         Objects.requireNonNull(type, "Type cannot be null.");
         String packageName = type.getPackageName();
@@ -63,7 +74,7 @@ public class ManagedTypeFactory implements TypeFactory {
     }
 
     @Override
-    public @Nullable TypeAssembly<?> loadClass(@NotNull PluginAssembly<?> assembly, @NotNull String className) {
+    public @Nullable <E extends TypeAssembly<?>> E loadClass(@NotNull PluginAssembly<?> assembly, @NotNull String className) {
         Objects.requireNonNull(assembly, "Assembly cannot be null.");
         Objects.requireNonNull(className, "Class name cannot be null.");
         String[] nodes = className.split("\\.");
@@ -74,23 +85,22 @@ public class ManagedTypeFactory implements TypeFactory {
         String name = nodes[nodes.length - 1];
         return loadClass(assembly, packageName, name);
     }
-
     @Override
-    public @Nullable TypeAssembly<?> loadClass(@NotNull PluginAssembly<?> assembly, @NotNull String packageName, @NotNull String className) {
+    public @Nullable <E extends TypeAssembly<?>> E loadClass(@NotNull PluginAssembly<?> assembly, @NotNull String packageName, @NotNull String className) {
         Objects.requireNonNull(assembly, "Assembly cannot be null.");
         Objects.requireNonNull(packageName, "Package name cannot be null.");
         Objects.requireNonNull(className, "Class name cannot be null.");
         Node node = get_node(packageName);
-        TypeAssembly<?> type = node.get(className);
+        E type = (E) node.get(className).assembly;
         if(type != null) return type;
         try {
             String path = packageName + "." + className;
-            ClassLoader loader = assembly.get().getClass().getClassLoader();
+            ClassLoader loader = assembly.getClassLoader();
             Class<?> clazz = loader.loadClass(path);
             TypeAssembly<?> result = load_class(node, assembly, clazz, packageName, className);
             if(assembly instanceof ManagedPluginAssembly<?> plugin) {
                 plugin.children.add(result);
-                return result;
+                return (E) result;
             }
             throw new UnsupportedOperationException("Unsupported assembly type: " + assembly.getClass().getName());
         } catch (ClassNotFoundException | NoClassDefFoundError ex) {
@@ -98,33 +108,91 @@ public class ManagedTypeFactory implements TypeFactory {
         }
     }
 
-    private <T> TypeAssembly<T> load_class(Node node, PluginAssembly<?> assembly, Class<T> clazz, String packageName, String name) {
+    private ManagedAnnotationTypeAssembly<? extends Annotation> generate_assembly(PluginAssembly<?> assembly, Class<? extends Annotation> clazz, List<MemberAssembly<? extends Annotation, ?>> members) {
+        return new ManagedAnnotationTypeAssembly<>(assembly, clazz, members);
+    }
+
+    private <T, E extends TypeAssembly<T>> E load_class(Node node, PluginAssembly<?> assembly, Class<T> clazz, String packageName, String name) {
         if(node == null) node = get_node(packageName);
         this.packageNames = null;
-        ManagedTypeAssembly<T> type = clazz.isAnnotation() ? new ManagedAnnotationTypeAssembly(assembly, clazz) : new ManagedTypeAssembly<>(assembly, clazz);
-        if(node.types.put(name, type) == null) {
-            size++;
-            MemberFactory factory = Diversifier.getMemberFactory();
-            for(Field field : type.get().getDeclaredFields()) {
-                factory.loadMember(type, field);
+        TypeAssembly<T> type = null;
+        List<MemberAssembly<T, ?>> members = new ArrayList<>();
+        if(ProxyContext.class.isAssignableFrom(clazz)) {
+            ProxyTypeAssemblyGenerator<? super T> generator = this.find_proxy_generator(node, name);
+            if(generator != null) type = generator.generate(clazz, members);
+        }
+        if(type == null) type = clazz.isAnnotation() ? (TypeAssembly<T>) new ManagedAnnotationTypeAssembly<>(assembly, (Class<? extends Annotation>) clazz, members) : new ManagedTypeAssembly<>(assembly, clazz, members);
+        TypeInfo<?> info;
+        if((info = node.types.put(name, new TypeInfo<>(type, members))) == null) size++;
+        else {
+            node.types.put(name, info);
+            throw new IllegalStateException("Type already exists: " + name);
+        }
+        MemberFactory factory = this.getMemberFactory();
+        if(type instanceof ManagedTypeAssembly<?> managed) {
+            for(Field field : managed.instance.getDeclaredFields()) {
+                members.add(factory.loadMember(type, field));
             }
-            for(Method method : type.get().getDeclaredMethods()) {
-                factory.loadMember(type, method);
+            for(Method method : managed.instance.getDeclaredMethods()) {
+                members.add(factory.loadMember(type, method));
             }
-            for(Constructor<?> constructor : type.get().getDeclaredConstructors()) {
-                factory.loadMember(type, constructor);
+            for(Constructor<?> constructor : managed.instance.getDeclaredConstructors()) {
+                members.add(factory.loadMember(type, constructor));
             }
         }
-        return type;
+        return (E) type;
+    }
+
+    private <T extends ProxyTypeAssemblyGenerator<?>> T find_proxy_generator(Node node, String name) {
+        char[] prefix = new char[]{'$', 'P', 'r', 'o', 'x', 'y'};
+        char[] chars = name.toCharArray();
+        int n = chars.length, m = prefix.length;
+        for(int i = n - 1, k = m - 1; i >= 0; i--) {
+            if(k >= 0) {
+                if (chars[i] == prefix[k]) k--;
+                else if(k + 1 != m) k++;
+                continue;
+            }
+            TypeAssembly<?> assembly = node.get(new String(chars, i + m + 1, n - i - m - 1)).assembly;
+            if(assembly == null) return null;
+            if(assembly instanceof ProxyTypeAssemblyGenerator<?> generator) return  (T) generator;
+            throw new ProxyException("Cannot find proxy type assembly generator for " + name);
+        }
+        return null;
+    }
+
+    <T, E extends ProxyTypeAssembly<? extends T>> E get_proxy(Class<T> type) {
+        String name = type.getSimpleName();
+        Node node = get_node(type.getPackageName());
+        if(node == null) return null;
+        TypeAssembly<T> assembly = (TypeAssembly<T>) node.get(name).assembly;
+        if(assembly == null) throw new ProxyException("Type assembly not found for type: " + type.getName());
+        return get_proxy(node, assembly);
+    }
+
+    private <T, E extends ProxyTypeAssembly<? extends T>> E get_proxy(Node node, TypeAssembly<T> type) {
+        if(node == null) return null;
+        Iterator<TypeInfo<?>> it = node.types.values().iterator();
+        while(it.hasNext()) {
+            TypeAssembly<?> assembly = it.next().assembly;
+            if(assembly instanceof ProxyTypeAssembly<?> proxy && proxy.getOriginal() == type) return (E) proxy;
+        }
+        return null;
     }
 
     @Override
-    public @Nullable <T> TypeAssembly<T> getTypeAssembly(@NotNull Class<T> type) {
+    public @Nullable <T, E extends TypeAssembly<T>> E getTypeAssembly(@NotNull Class<T> type) {
         Objects.requireNonNull(type, "Type cannot be null.");
         String packageName = type.getPackageName();
         String name = type.getSimpleName();
-        if(current == null || current.get() != type) this.current = get_node(packageName).get(name);
-        return (TypeAssembly<T>) this.current;
+        if(current == null || current.compareTo(type) != 0) this.current = get_node(packageName).get(name).assembly;
+        return (E) this.current;
+    }
+
+    @Override
+    public @Nullable <T, E extends ProxyTypeAssembly<? extends T>> E getProxyTypeAssembly(@NotNull Class<T> type) {
+        Objects.requireNonNull(type, "Type cannot be null.");
+        return get_proxy(type);
     }
 
     @Override
@@ -154,7 +222,7 @@ public class ManagedTypeFactory implements TypeFactory {
         for(Node child : node.children) {
             types = Stream.concat(types, get_all_package_types__stream(child));
         }
-        return Stream.concat(types, node.types.values().stream());
+        return Stream.concat(types, node.types.values().stream().map(info -> info.assembly));
     }
 
     private List<String> get_package_names(Node node, StringBuilder sb) {
@@ -176,8 +244,8 @@ public class ManagedTypeFactory implements TypeFactory {
         return packages;
     }
 
-    private StringBuilder pop_end(StringBuilder sb, int n, int m) {
-        return sb.delete(m - n, m);
+    private void pop_end(StringBuilder sb, int n, int m) {
+        sb.delete(m - n, m);
     }
 
     private Node get_node(String packageName) {
@@ -207,11 +275,22 @@ public class ManagedTypeFactory implements TypeFactory {
         }
     }
 
+    static class TypeInfo<T> {
+
+        TypeAssembly<T> assembly;
+
+        List<MemberAssembly<T, ?>> members;
+
+        TypeInfo(TypeAssembly<T> assembly, List<MemberAssembly<T, ?>> members) {
+            this.assembly = assembly;
+            this.members = members;
+        }
+    }
+
     final static class Node {
         private final String name;
         private final List<Node> children;
-        private final Map<String, TypeAssembly<?>> types;
-        private TypeAssembly<?> current;
+        private final Map<String, TypeInfo<?>> types;
 
         private Node(String name) {
             this.name = name;
@@ -223,10 +302,9 @@ public class ManagedTypeFactory implements TypeFactory {
             this("");
         }
 
-        private TypeAssembly<?> get(String name) {
-            if(this.current != null && this.current.getName().equals(name)) return this.current;
-            this.current = this.types.get(name);
-            return this.current;
+
+        private TypeInfo<?> get(String name) {
+            return this.types.get(name);
         }
 
         private Node get_child(String name) {

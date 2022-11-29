@@ -7,7 +7,4 @@ public interface MemberAssembly<T, E extends Member & AnnotatedElement> extends 
 
     public TypeAssembly<T> getDeclaredType();
 
-
-
-
 }
