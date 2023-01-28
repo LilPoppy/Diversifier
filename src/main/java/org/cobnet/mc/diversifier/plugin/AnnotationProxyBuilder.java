@@ -1,18 +1,20 @@
 package org.cobnet.mc.diversifier.plugin;
 
-import org.cobnet.mc.diversifier.exception.ProxyException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedElement;
 
-public interface AnnotationProxyBuilder<T extends Annotation> {
+public interface AnnotationProxyBuilder<T extends Annotation> extends ProxyBuilder.Prototype<T, AnnotatedElement> {
 
-    public @NotNull AnnotationProxyBuilder<T> set(@NotNull String key, @Nullable Object value);
+    @Override
+    public @NotNull AnnotationProxyBuilder<T> carrier(@NotNull AnnotatedElement carrier);
 
-    public @NotNull AnnotationProxyBuilder<T> set(@NotNull MethodAssembly<T> key, @Nullable Object value);
+    @Override
+    public @NotNull AnnotationProxyBuilder<T> name(@NotNull String name);
 
-    public @NotNull T build() throws ProxyException;
+    public @NotNull AnnotationProxyBuilder<T> value(@NotNull String key, @Nullable Object value);
 
-    public @NotNull AnnotationProxyBuilder<T> scope(Scope scope) throws ProxyException;
+    public @NotNull AnnotationProxyBuilder<T> value(@NotNull MethodAssembly<T> key, @Nullable Object value);
 }

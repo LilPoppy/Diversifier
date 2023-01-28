@@ -19,6 +19,16 @@ sealed class ManagedTypeAssembly<T> extends AbstractManagedAnnotatedAssembly<Cla
     }
 
     @Override
+    public String getSimpleName() {
+        return this.instance.getSimpleName();
+    }
+
+    @Override
+    public String getPackageName() {
+        return this.instance.getPackageName();
+    }
+
+    @Override
     public PluginAssembly<?> getPluginAssembly() {
         return this.getParent();
     }
@@ -109,7 +119,7 @@ sealed class ManagedTypeAssembly<T> extends AbstractManagedAnnotatedAssembly<Cla
     public @NotNull T create(Object... args) throws Throwable {
         //TODO: 需要实现当参数有为null的时候自动匹配
         Class<?>[] types = Arrays.stream(args).map(Object::getClass).toArray(Class[]::new);
-        ConstructorAssembly<T> constructor = this.getConstructor(types);
+        ConstructorAssembly<T> constructor = ManagedTypeAssembly.this.getConstructor(types);
         if(constructor == null) throw new NoSuchMethodException("No constructor found for arguments: " + Arrays.toString(types));
         return constructor.newInstance(args);
     }
@@ -127,7 +137,8 @@ sealed class ManagedTypeAssembly<T> extends AbstractManagedAnnotatedAssembly<Cla
     @Override
     public boolean equals(Object o) {
         if(o instanceof Class<?> type) return this.instance.equals(type);
-        return super.equals(o);
+        if(o instanceof TypeAssembly<?>) return super.equals(o);
+        return false;
     }
 
     @Override

@@ -7,6 +7,10 @@ import java.util.stream.Stream;
 
 public interface TypeAssembly<T> extends AnnotatedAssembly<Class<T>, PluginAssembly<?>, MemberAssembly<T, ?>>, Comparable<Class<?>> {
 
+    public String getSimpleName();
+
+    public String getPackageName();
+
     public PluginAssembly<?> getPluginAssembly();
 
     public @NotNull TypeAssembly<? extends T>[] getSubTypes();
@@ -33,6 +37,7 @@ public interface TypeAssembly<T> extends AnnotatedAssembly<Class<T>, PluginAssem
         return this.getChildrenAsStream(name);
     }
 
+    @SuppressWarnings("unchecked")
     public default @NotNull Stream<MethodAssembly<T>> getMethodsAsStream(@NotNull String name) {
         return this.getMembersAsStream(name).filter(MethodAssembly.class::isInstance).map(member -> (MethodAssembly<T>) member);
     }

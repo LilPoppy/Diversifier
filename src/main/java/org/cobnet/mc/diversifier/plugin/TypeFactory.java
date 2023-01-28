@@ -4,6 +4,7 @@ import org.cobnet.mc.diversifier.exception.MissingResourceException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.annotation.Annotation;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -27,7 +28,13 @@ public interface TypeFactory {
 
     public @Nullable <T, E extends TypeAssembly<T>> E getTypeAssembly(@NotNull Class<T> type);
 
+    public @Nullable <T, E extends ProxyTypeAssembly<? extends T>> E getProxyTypeAssembly(@NotNull TypeAssembly<T> type);
+
     public @Nullable <T, E extends ProxyTypeAssembly<? extends T>> E getProxyTypeAssembly(@NotNull Class<T> type);
+
+    public default @Nullable <T extends Annotation, E extends ProxyAnnotationTypeAssembly<? extends T>> E getProxyAnnotationTypeAssembly(@NotNull Class<T> type) {
+        return getProxyTypeAssembly(type);
+    }
 
     public @NotNull <T> TypeAssembly<? extends T>[] getSubTypesOf(@NotNull Class<T> type) throws MissingResourceException;
 

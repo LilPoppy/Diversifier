@@ -9,6 +9,8 @@ import java.util.stream.Stream;
 
 public interface MemberFactory {
 
+    public @NotNull TypeFactory getTypeFactory();
+
     public @NotNull Stream<MemberAssembly<?, ?>> getMembersAsStream();
 
     public @NotNull MemberAssembly<?, ?>[] getMembers(@NotNull String name);

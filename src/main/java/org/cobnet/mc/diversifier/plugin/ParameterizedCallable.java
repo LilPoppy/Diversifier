@@ -1,8 +1,6 @@
 package org.cobnet.mc.diversifier.plugin;
 
-public interface ParameterizedCallable<T> {
-
-    public T getInstance();
+public interface ParameterizedCallable {
 
     public Object call(Object... args) throws Throwable;
 }

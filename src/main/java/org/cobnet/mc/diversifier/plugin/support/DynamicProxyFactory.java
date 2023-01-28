@@ -1,13 +1,23 @@
 package org.cobnet.mc.diversifier.plugin.support;
 
 import lombok.Getter;
+import net.bytebuddy.asm.Advice;
+import net.bytebuddy.description.annotation.AnnotationValue;
+import net.bytebuddy.description.field.FieldDescription;
+import net.bytebuddy.description.method.MethodDescription;
 import net.bytebuddy.description.modifier.FieldManifestation;
 import net.bytebuddy.description.modifier.Visibility;
+import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
-import net.bytebuddy.implementation.MethodDelegation;
+import net.bytebuddy.dynamic.scaffold.InstrumentedType;
+import net.bytebuddy.dynamic.scaffold.MethodGraph;
+import net.bytebuddy.implementation.*;
+import net.bytebuddy.implementation.bind.annotation.FieldProxy;
 import net.bytebuddy.implementation.bind.annotation.Morph;
 import net.bytebuddy.matcher.ElementMatchers;
+import org.checkerframework.checker.signature.qual.FieldDescriptor;
+import org.cobnet.mc.diversifier.exception.DuplicateProxyException;
 import org.cobnet.mc.diversifier.exception.ProxyException;
 import org.cobnet.mc.diversifier.plugin.*;
 import org.cobnet.mc.diversifier.plugin.enums.ProxyScope;
@@ -16,12 +26,19 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.lang.annotation.Annotation;
+import java.lang.invoke.TypeDescriptor;
+import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 
-abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends ManagedPluginFactory<T> implements ProxyFactory permits AbstractPlatformContext {
+abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends ManagedPluginFactory<T> implements ProxyFactory permits AbstractManagedPlatformContext {
 
-    final static String PROXY_CONTEXT_FIELD = "__proxy_context__", EXTENDABLE_ANNOTATION_FIELD = "__extendable_annotation__";
+    final static String PROXY_CONTEXT_FIELD = "__proxy_context__";
 
     final static MethodInterceptor DEFAULT_METHOD_INTERCEPTOR = new DynamicProxyMethodInterceptor();
 
@@ -41,53 +58,43 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
     }
 
     @Override
-    public <E> @NotNull E create(@NotNull String name, @NotNull Class<E> type, @NotNull Scope scope, Object... args) throws ProxyException {
-        TypeAssembly<E> assembly = this.getTypeFactory().getTypeAssembly(type);
-        if(assembly == null) throw new ProxyException("Type assembly for type " + type.getName() + " is not managed.");
-        return this.create(name, assembly, scope, args);
-    }
-
-    @Override
-    public <E> @NotNull E create(@NotNull String name, @NotNull Class<E> type, Object... args) throws ProxyException {
-        return this.create(name, type, ProxyScope.PROTOTYPE, args);
-    }
-
-    @Override
-    public <E> @NotNull E create(@NotNull Class<E> type, @NotNull Scope scope, Object... args) throws ProxyException {
-        return this.create(type.getName(), type, scope, args);
+    public <E> @NotNull E create(@Nullable String name, @NotNull Class<E> type, Object... args) throws ProxyException {
+        Objects.requireNonNull(name, "Name cannot be null.");
+        Objects.requireNonNull(type, "Type cannot be null.");
+        TypeFactory factory = this.getTypeFactory();
+        TypeAssembly<E> assembly = factory.getTypeAssembly(type);
+        assert assembly != null;
+        return this.create(name, assembly, args);
     }
 
     @Override
     public <E> @NotNull E create(@NotNull Class<E> type, Object... args) throws ProxyException {
-        return this.create(type, ProxyScope.PROTOTYPE, args);
+        return this.create(null, type, args);
     }
 
-    @Override
-    public <E> @NotNull E create(@NotNull String name, @NotNull TypeAssembly<E> type, @NotNull Scope scope, Object... args) throws ProxyException {
-        Objects.requireNonNull(name, "Name cannot be null.");
+
+    @SuppressWarnings("unchecked")
+    private <E> ProxyContext<? extends E> create_proxy(TypeAssembly<E> type, String name, Object... args) throws ProxyException {
         Objects.requireNonNull(type, "Type cannot be null.");
-        Objects.requireNonNull(scope, "Scope cannot be null.");
-        return create_proxy(type, name, scope, args).getInstance();
+        ProxyTypeAssembly<? extends E> assembly = get_proxy_assembly(type.getPluginAssembly(), type);
+        if(!type.isAnnotation()) {
+            return (ProxyContext<? extends E>) assembly.build(name, args).build();
+        }
+        throw new ProxyException("Cannot create annotation proxy as singleton.");
     }
 
-    private <E> ProxyContext<? extends E> create_proxy(TypeAssembly<E> type, String name, Scope scope, Object... args) throws ProxyException {
-        ProxyTypeAssembly<? extends E> assembly = find_proxy_type(type.getPluginAssembly(), type.get());
-        ProxyContext<? extends E> context = assembly.create(name, scope, args);
-        ContextNode node = insert(context);
-        return context;
-    }
-
-    private <E> ProxyTypeAssembly<? extends E> find_proxy_type(PluginAssembly<?> plugin, Class<E> type) {
+    private <E> ProxyTypeAssembly<? extends E> get_proxy_assembly(PluginAssembly<?> plugin, TypeAssembly<E> type) {
+        if(type instanceof ProxyTypeAssembly<?> proxy) return (ProxyTypeAssembly<? extends E>) proxy;
         TypeFactory factory = getTypeFactory();
         ProxyTypeAssembly<? extends E> assembly = factory.getProxyTypeAssembly(type);
         if(assembly != null) return assembly;
-        Class<? extends E> proxy = ByteBuddy.CREATE(type.getClassLoader(), ByteBuddy.BUILDER(type, DynamicProxyFactory.DEFAULT_METHOD_INTERCEPTOR).method(ElementMatchers.isDefaultConstructor().or(ElementMatchers.isConstructor())).intercept(MethodDelegation.withDefaultConfiguration().withBinders(Morph.Binder.install(ParameterizedCallable.class)).to(DEFAULT_METHOD_INTERCEPTOR)));
+        Class<? extends E> proxy = ByteBuddy.LOAD(type.getClassLoader(), ByteBuddy.BUILD(type, DynamicProxyFactory.DEFAULT_METHOD_INTERCEPTOR));
         assembly = (ProxyTypeAssembly<? extends E>) factory.loadClass(plugin, proxy);
         if(assembly == null) throw new ProxyException("Type assembly for type '" + type.getName() + "' is not managed.");
         return assembly;
     }
 
-    private ContextNode insert(ProxyContext<?> context) {
+    ContextNode insert(ProxyContext<?> context) {
         ContextNode node = new ContextNode(context), left = null, right = null, head;
         TypeNode typed = new TypeNode(node), current = this.root, prior = null;
         if(current == null) this.root = typed;
@@ -96,7 +103,7 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
             do {
                 head = current.head;
                 int cmp = node.compareTo(head);
-                if (cmp == 0) throw new ProxyException("Duplicate proxy context name: '" + context.getName() + "'.");
+                if (cmp == 0) throw new DuplicateProxyException(node.context);
                 left = cmp > 0 ? min(head, left) : left;
                 right = cmp < 0 ? max(head, right) : right;
                 cmp = typed.compareTo(current);
@@ -127,7 +134,7 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
             do {
                 int cmp = node.compareTo(current);
                 if(cmp < 0) left = min(current, left);
-                else if (cmp == 0) throw new ProxyException("Duplicate proxy context name: '" + node.context.getName() + "'");
+                else if (cmp == 0) throw new DuplicateProxyException(node.context);
                 else {
                     right = max(current, right);
                     if (prior == null) typed.head = node;
@@ -149,6 +156,7 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
     }
 
     private void set_prev_next(ContextNode node, ContextNode left, ContextNode right) {
+        if(right == left) right = null;
         if((left = find_previous(left, node)) != null && left != node) set_next(left, node);
         if(right == null && node.next == null) right = find_next(left, node);
         if((right = min(node.next, right)) != null && right != node) node.next = right;
@@ -172,7 +180,8 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
         node.next = value;
     }
 
-    private boolean is_continue(String name, int cmp, boolean flag) {
+    @SuppressWarnings("PointlessBooleanExpression")
+    private boolean test(String name, int cmp, boolean flag) {
         if(cmp < 0) return true;
         else if(cmp == 0) throw new ProxyException("Context with name '" + name + "' already exists.");
         return false ^ flag;
@@ -189,10 +198,12 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
     private ContextNode find(ContextNode node, ContextNode value, boolean flag) {
         if(node == null) return null;
         if(value == null) return node;
+        ContextNode current = node;
         String name = value.context.getName();
-        do node = node.next == null ? node : node.next;
-        while(node.next != null && (!flag || node.compareTo(value) < 0) && is_continue(name, node.next.compareTo(value), flag));
-        return node;
+        do current = current.next == null ? current : current.next;
+        while(current != node && current.next != null && (!flag || current.compareTo(value) < 0) && test(name, current.next.compareTo(value), flag));
+        if(current.next != null && current.next == node) throw new ProxyException("Algorithm overflow error.");
+        return current;
     }
 
     private ContextNode get_node(String name) {
@@ -214,10 +225,15 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
         return null;
     }
 
+    private TypeNode get_node(TypeAssembly<?> assembly) {
+        if(assembly == null) return null;
+        if(assembly instanceof ManagedTypeAssembly<?> managed) return get_node(managed.instance);
+        throw new UnsupportedOperationException("Unsupported type assembly: " + assembly);
+    }
 
     private TypeNode get_node(Class<?> type) {
         if(this.root == null) return null;
-        if(this.current != null && this.current.type().get() == type) return this.current;
+        if(this.current != null && (this.current.type().equals(type))) return this.current;
         if(this.root == null) return null;
         TypeNode node = this.root;
         while(node != null) {
@@ -231,9 +247,15 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
         return null;
     }
 
+    private ContextNode get_node(TypeAssembly<?> assembly, String name) {
+        if(assembly == null) return get_node(name);
+        if(assembly instanceof ManagedTypeAssembly<?> managed) return get_node(managed.instance, name);
+        throw new UnsupportedOperationException("Unsupported type assembly: " + assembly);
+    }
+
     private ContextNode get_node(Class<?> type, String name) {
         if(type == null) return get_node(name);
-        if(this.record != null && this.record.context.getAssembly().get() == type && this.record.context.getName().equals(name)) return this.record;
+        if(this.record != null && this.record.context.getAssembly().equals(type) && this.record.context.getName().equals(name)) return this.record;
         return get_node(get_node(type), name);
     }
 
@@ -252,36 +274,38 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
     }
 
     @Override
-    public <E> @NotNull E create(@NotNull String name, @NotNull TypeAssembly<E> type, Object... args) throws ProxyException {
-        return this.create(name, type, ProxyScope.SINGLETON, args);
-    }
-
-    @Override
-    public <E> @NotNull E create(@NotNull TypeAssembly<E> type, @NotNull Scope scope, Object... args) throws ProxyException {
-        return this.create(type.get().getSimpleName(), type, scope, args);
+    public <E> @NotNull E create(@Nullable String name, @NotNull TypeAssembly<E> type, Object... args) throws ProxyException {
+        Objects.requireNonNull(type, "Type cannot be null.");
+        if(type instanceof ProxyAnnotationTypeAssembly<?>) throw new ProxyException("Cannot create proxy for annotation type.");
+        return  create_proxy(type, name, args).getInstance();
     }
 
     @Override
     public <E> @NotNull E create(@NotNull TypeAssembly<E> type, Object... args) throws ProxyException {
-        return this.create(type, ProxyScope.SINGLETON, args);
+        return this.create(null, type, args);
     }
 
     @Override
-    public @NotNull <E extends Annotation> AnnotationProxyBuilder<? extends E> create(@NotNull String name, @NotNull AnnotationTypeAssembly<E> type) throws ProxyException {
-        Objects.requireNonNull(name, "Name cannot be null.");
-        Objects.requireNonNull(type, "Annotation type cannot be null.");
-        if(type instanceof ProxyAnnotationTypeAssembly<? extends E> assembly) return assembly.create(name);
-        ProxyTypeAssembly<? extends E> assembly = find_proxy_type(type.getPluginAssembly(), type.get());
-        if(assembly instanceof ProxyAnnotationTypeAssembly<?> annotation) return (AnnotationProxyBuilder<? extends E>) annotation.create(name);
-        throw new ProxyException("Cannot create proxy annotation builder for type " + type.get().getName() + " because it is not a proxy annotation type.");
+    public @NotNull <E> ProxyBuilder.Singleton<E> build(@NotNull Class<E> type, Object... args) throws ProxyException {
+        ProxyTypeAssembly<E> assembly = this.getTypeFactory().getProxyTypeAssembly(type);
+        if(assembly == null) throw new ProxyException("Type assembly not found for type: " + type);
+        return assembly.build(type.getName(), args);
     }
 
+    @SuppressWarnings("unchecked")
     @Override
-    public @NotNull <E extends Annotation> AnnotationProxyBuilder<? extends E> create(@NotNull AnnotatedAssembly<?, ?, ?> owner, @NotNull Class<E> type) throws ProxyException {
-        Objects.requireNonNull(type, "Annotation type cannot be null.");
-        AnnotationTypeAssembly<E> assembly = getTypeFactory().getTypeAssembly(type);
-        if(assembly == null) throw new ProxyException("Cannot create proxy for type " + type.getName() + " because it is not a valid annotation type.");
-        return create(String.join(".", owner.getName(), assembly.get().getSimpleName()), assembly);
+    public @NotNull <E extends Annotation> AnnotationProxyBuilder<E> build(@NotNull Class<E> type, @NotNull AnnotatedElement carrier) throws ProxyException {
+        Objects.requireNonNull(type, "Type cannot be null.");
+        Objects.requireNonNull(carrier, "Carrier cannot be null.");
+        AnnotationTypeAssembly<E> assembly = this.getTypeFactory().getTypeAssembly(type);
+        return (AnnotationProxyBuilder<E>) create_builder(carrier, assembly);
+    }
+
+    @SuppressWarnings("unchecked")
+    private <E extends Annotation> AnnotationProxyBuilder<? extends E> create_builder(AnnotatedElement element, AnnotationTypeAssembly<E> type, Object... args) {
+        ProxyTypeAssembly<? extends E> proxy = get_proxy_assembly(type.getPluginAssembly(), type);
+        if(proxy instanceof ProxyAnnotationTypeAssembly<?> assembly) return (AnnotationProxyBuilder<? extends E>) assembly.build(element, args);
+        throw new ProxyException("Cannot create proxy annotation builder for type " + type.getName() + " because it is not a proxy annotation type.");
     }
 
     @Override
@@ -291,13 +315,13 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
 
     @Override
     public <E> @Nullable E getProxy(@NotNull String name, @NotNull TypeAssembly<E> type) {
-        return (E) get_node(type.get(), name).context.getInstance();
+        return (E) get_node(type, name).context.getInstance();
     }
 
     @Override
     public <E> @Nullable E getProxy(@NotNull TypeAssembly<E> type) {
         //TODO 寻找最适合的类型
-        return (E) get_node(type.get()).head.context.getInstance();
+        return (E) get_node(type).head.context.getInstance();
     }
 
     @Override
@@ -310,19 +334,64 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
         return null;
     }
 
+    @Override
+    public <E> @NotNull E[] getProxies(@NotNull Class<E> type) {
+        TypeFactory factory = this.getTypeFactory();
+        TypeAssembly<E> assembly = factory.getTypeAssembly(type);
+        assert assembly != null;
+        return getProxies(assembly);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <E> @NotNull E[] getProxies(@NotNull TypeAssembly<E> type) {
+        TypeFactory factory = this.getTypeFactory();
+        ProxyContext<?>[] empty = new ProxyContext<?>[0];
+        if(!(type instanceof ProxyTypeAssembly<E>)) {
+            type = (TypeAssembly<E>) factory.getProxyTypeAssembly(type);
+            if(type == null) return (E[]) empty;
+        }
+        TypeNode node = get_node(type);
+        List<E> result = new ArrayList<>();
+        if(node == null) return (E[]) empty;
+        ContextNode head = node.head;
+        if(head == null) return (E[]) empty;
+        ContextNode current = head;
+        do result.add((E) current.context.getInstance());
+        while((current = current.after) != null);
+        return (E[]) result.toArray(empty);
+    }
+
     static final class ByteBuddy {
 
-        static <E> DynamicType.Builder<? extends E> BUILDER(Class<E> type, MethodInterceptor interceptor) {
-            if(type.isArray() || type.isPrimitive() || Modifier.isFinal(type.getModifiers())) throw new ProxyException("Cannot create proxy for type " + type.getName() + " because it is final, primitive or an array.");
-            DynamicType.Builder<? extends E> builder = new net.bytebuddy.ByteBuddy().subclass(type).implement(ProxyContext.class).name(String.join("$", type.getName(), String.format("Proxy%s", type.getSimpleName())));
-            if(type.isAnnotation()) builder = builder.implement(ExtendableAnnotation.class).defineField(EXTENDABLE_ANNOTATION_FIELD, ExtendableAnnotation.class, Visibility.PRIVATE, FieldManifestation.FINAL)
-                    .method(ElementMatchers.isDeclaredBy(ExtendableAnnotation.class)).intercept(MethodDelegation.toField(EXTENDABLE_ANNOTATION_FIELD));
-            return builder.defineField(PROXY_CONTEXT_FIELD, ProxyContext.class, Visibility.PRIVATE, FieldManifestation.FINAL)
-                    .method(ElementMatchers.isDeclaredBy(ProxyContext.class)).intercept(MethodDelegation.toField(PROXY_CONTEXT_FIELD))
-                    .method(ElementMatchers.isDeclaredBy(type)).intercept(MethodDelegation.withDefaultConfiguration().withBinders(Morph.Binder.install(ParameterizedCallable.class)).to(interceptor));
+        static <E> DynamicType.Builder<? extends E> BUILD(TypeAssembly<E> type, MethodInterceptor interceptor) {
+            Class<E> clazz = type instanceof ManagedTypeAssembly<E> managed ? managed.instance : null;
+            if(clazz == null) throw new UnsupportedOperationException("Cannot create proxy for type " + type.getName() + " because it is not a managed type.");
+            if(clazz.isArray() || clazz.isPrimitive() || Modifier.isFinal(clazz.getModifiers())) throw new ProxyException("Cannot create proxy for type " + type.getName() + " because it is final, primitive or an array.");
+            DynamicType.Builder<? extends E> builder = new net.bytebuddy.ByteBuddy().subclass(clazz).implement(ProxyContext.class).name(String.join("$", type.getName(), String.format("Proxy%s", type.getSimpleName()))).defineConstructor(Modifier.PUBLIC);
+            if(type.isAnnotation()) {
+                builder = builder.defineField(DynamicProxyFactory.PROXY_CONTEXT_FIELD, DynamicProxyAnnotationTypeAssembly.DynamicProxyContext.class, Visibility.PRIVATE, FieldManifestation.FINAL)
+                        .implement(ExtendableAnnotation.class).method(ElementMatchers.isDeclaredBy(ExtendableAnnotation.class)).intercept(MethodDelegation.toField(DynamicProxyFactory.PROXY_CONTEXT_FIELD));
+                Method[] methods = clazz.getDeclaredMethods();
+                String prefix = "__";
+                for(Method method : methods) {
+                    int mod = method.getModifiers();
+                    if(!Modifier.isAbstract(mod) || Modifier.isStatic(mod) || !Modifier.isPublic(mod)) continue;
+                    String name = method.getName();
+                    String field = prefix + name;
+                    builder.defineField(field, method.getReturnType(), Visibility.PRIVATE, FieldManifestation.FINAL)
+                            .method(ElementMatchers.isDeclaredBy(clazz).and(ElementMatchers.named(name)))
+                            .intercept(FieldAccessor.ofField(field).appender());
+                    System.out.println("###" + name);
+                    //builder = builder.defineMethod(method.getName(), method.getReturnType(), Visibility.PUBLIC, Ownership.STATIC, method.getExceptionTypes()).intercept(MethodDelegation.toField(DynamicProxyFactory.PROXY_CONTEXT_FIELD));
+                }
+                System.out.println("@@@@@@" + Arrays.toString(methods));
+            } else builder.defineField(DynamicProxyFactory.PROXY_CONTEXT_FIELD, DynamicProxyTypeAssembly.DynamicProxyContext.class, Visibility.PRIVATE, FieldManifestation.FINAL);
+            return builder.method(ElementMatchers.isDeclaredBy(ProxyContext.class)).intercept(MethodDelegation.toField(DynamicProxyFactory.PROXY_CONTEXT_FIELD))
+                    .method(ElementMatchers.isDeclaredBy(clazz)).intercept(MethodDelegation.withDefaultConfiguration().withBinders(Morph.Binder.install(ParameterizedCallable.class)).to(interceptor));
         }
 
-        static <E> Class<? extends E> CREATE(ClassLoader loader, DynamicType.Builder<? extends E> builder) throws ProxyException {
+        static <E> Class<? extends E> LOAD(ClassLoader loader, DynamicType.Builder<? extends E> builder) throws ProxyException {
             try(DynamicType.Unloaded<? extends E> unloaded = builder.make()) {
                 return unloaded.load(loader, ClassLoadingStrategy.Default.INJECTION).getLoaded();
             } catch (IOException e) {
@@ -357,11 +426,11 @@ abstract sealed class DynamicProxyFactory<T extends ProceduralPlugin<T>> extends
         public int compareTo(TypeNode node) {
             TypeAssembly<?> assembly = node.type();
             if(assembly == null) throw new ProxyException("Cannot compare type node because it has no type.");
-            return compare(assembly.get());
+            return compare(assembly);
         }
 
         private int compare(@NotNull TypeAssembly<?> o) {
-            return compare(o.get());
+            return Integer.compare(Objects.requireNonNull(type()).getName().hashCode(), o.getName().hashCode());
         }
     }
     final static class ContextNode extends Node<ContextNode> {

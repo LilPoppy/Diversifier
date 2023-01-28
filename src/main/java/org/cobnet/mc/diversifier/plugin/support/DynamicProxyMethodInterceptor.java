@@ -1,6 +1,7 @@
 package org.cobnet.mc.diversifier.plugin.support;
 
 import net.bytebuddy.implementation.bind.annotation.*;
+import org.cobnet.mc.diversifier.exception.ProxyException;
 import org.cobnet.mc.diversifier.plugin.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -13,40 +14,43 @@ public final class DynamicProxyMethodInterceptor implements MethodInterceptor {
 
     @RuntimeType
     @Override
-    public @Nullable Object intercept(@This @NotNull Object instance, @NotNull @Origin Method method, @NotNull @AllArguments Object[] args, @NotNull @Morph ParameterizedCallable<?> callable) throws Throwable {
-        return commit(instance, method, args, callable);
+    public @Nullable Object intercept(@This @NotNull ProxyContext<?> context, @NotNull @Origin Method method, @NotNull @AllArguments Object[] args, @NotNull @Morph ParameterizedCallable callable) throws Throwable {
+        return commit(context, method, args, callable);
     }
 
     @RuntimeType
     @Override
-    public @Nullable Object intercept(@NotNull @This Object instance, @NotNull @Origin Method method, @NotNull @AllArguments Object[] args) throws Throwable {
-        return commit(instance, method, args, null);
+    public @Nullable Object intercept(@NotNull @This ProxyContext<?> context, @NotNull @Origin Method method, @NotNull @AllArguments Object[] args) throws Throwable {
+        return commit(context, method, args, null);
     }
 
-    private Object commit(Object instance, Method method, Object[] args, ParameterizedCallable<?> callable) throws Throwable {
+    private Object commit(ProxyContext<?> context, Method method, Object[] args, ParameterizedCallable callable) throws Throwable {
         Object result = null;
-        ProxyContext<?> context = (ProxyContext<?>) instance;
         MethodAssembly<?> assembly = context.getAssembly().getMethod(method.getName(), method.getParameterTypes());
-        commit_before(instance, assembly, args, callable);
+        commit_before(context, assembly, args, callable);
         assert assembly != null;
         //call before interceptors
-        System.out.println(method);
-        if (context.getProxyContextInstance() instanceof DynamicProxyAnnotationTypeAssembly.DynamicProxyContext<?> dynamic) {
-            if (dynamic.annotation.properties.size() > 0 && (result = dynamic.annotation.properties.get(assembly)) != null)
-                return commit_after(instance, assembly, result);
+        ProxyContext<?> delegate = context.getDelegate();
+        if(delegate instanceof DynamicProxyTypeAssembly.DynamicProxyContext<?>) {
+
+        }
+        if (context.getDelegate() instanceof DynamicProxyAnnotationTypeAssembly.DynamicProxyContext<?> dynamic) {
+            if(dynamic.carrier == null) throw new ProxyException("Proxy '" + context.getName() + "' is not initialized");
+            if (dynamic.properties.size() > 0 && (result = dynamic.properties.get(assembly)) != null)
+                return commit_after(context, assembly, result);
         }
         if (callable != null) {
-            result = callable.call(instance, method, args);
+            result = callable.call(args);
         }
-        return commit_after(instance, assembly, result);
+        return commit_after(context, assembly, result);
     }
 
-    private Object commit_before(Object instance, MethodAssembly<?> assembly, Object[] args, ParameterizedCallable<?> callable) throws Throwable {
+    private Object commit_before(ProxyContext<?> context, MethodAssembly<?> assembly, Object[] args, ParameterizedCallable callable) throws Throwable {
         System.out.println("bytebuddy method call before");
         return null;
     }
 
-    private Object commit_after(Object instance, MethodAssembly<?> assembly, Object result) {
+    private Object commit_after(ProxyContext<?> context, MethodAssembly<?> assembly, Object result) {
         System.out.println("bytebuddy method call after");
         return result;
     }

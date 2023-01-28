@@ -28,6 +28,11 @@ final class ManagedMemberFactory implements MemberFactory {
     }
 
     @Override
+    public @NotNull TypeFactory getTypeFactory() {
+        return this.factory;
+    }
+
+    @Override
     public @NotNull Stream<MemberAssembly<?, ?>> getMembersAsStream() {
         return traverse_members_stream(this.root);
     }
@@ -60,7 +65,7 @@ final class ManagedMemberFactory implements MemberFactory {
     public <T> @NotNull MemberAssembly<T, ?>[] getMembers(@NotNull Class<T> type, @NotNull String name) {
         Objects.requireNonNull(type, "Type cannot be null.");
         Objects.requireNonNull(name, "Name cannot be null.");
-        return get_node(this.root, name).get(factory.getTypeAssembly(type)).members.toArray(MemberAssembly[]::new);
+        return get_node(this.root, name).get_entry(factory.getTypeAssembly(type)).members.toArray(MemberAssembly[]::new);
     }
 
     @Override
@@ -73,7 +78,7 @@ final class ManagedMemberFactory implements MemberFactory {
     @Override
     public <T> @NotNull Stream<ConstructorAssembly<T>> getConstructorsAsStream(@NotNull Class<T> type) {
         Objects.requireNonNull(type, "Type cannot be null.");
-        return get_node(this.root, type.getName()).get(factory.getTypeAssembly(type)).members.stream().filter(member -> member instanceof ConstructorAssembly<?>).map(member -> (ConstructorAssembly<T>) member);
+        return get_node(this.root, type.getName()).get_entry(factory.getTypeAssembly(type)).members.stream().filter(member -> member instanceof ConstructorAssembly<?>).map(member -> (ConstructorAssembly<T>) member);
     }
 
     @Override
@@ -104,14 +109,14 @@ final class ManagedMemberFactory implements MemberFactory {
     @Override
     public @Nullable <T extends Member & AnnotatedElement> MemberAssembly<T, ?> getMemberAssembly(@NotNull T member) {
         Objects.requireNonNull(member, "Member cannot be null.");
-        return (MemberAssembly<T, ?>) get_node(this.root, member.getName()).get(factory.getTypeAssembly(member.getDeclaringClass())).get(member);
+        return (MemberAssembly<T, ?>) get_node(this.root, member.getName()).get_entry(factory.getTypeAssembly(member.getDeclaringClass())).get(member);
     }
 
     @Override
     public <T, E extends Member & AnnotatedElement> @NotNull MemberAssembly<T, E> loadMember(@NotNull TypeAssembly<T> type, @NotNull E member) {
         Objects.requireNonNull(type, "Type cannot be null.");
         Objects.requireNonNull(member, "Member cannot be null.");
-        MemberAssembly<T, E> assembly = create_assembly(type, member);
+        MemberAssembly<T, E> assembly = create_assembly(type, member, new ArrayList<>());
         try {
             this.root = insert(this.root, member.getName(), type, assembly);
             this.root.to_black();
@@ -120,12 +125,6 @@ final class ManagedMemberFactory implements MemberFactory {
         } catch (KeyAlreadyExistsException e) {
             return (MemberAssembly<T, E>) getMemberAssembly(member);
         }
-    }
-
-    <T, E extends Member & AnnotatedElement> MemberAssembly<T, E> load_member(ManagedTypeFactory.TypeInfo<T> info, E member, List<MethodAssembly<?>> methods) {
-        MemberAssembly<T, E> assembly = create_assembly(info.assembly, member, methods);
-        info.members.add(assembly);
-        this.root = insert(this.root, member.getName(), info);
     }
 
     @Override
@@ -140,16 +139,15 @@ final class ManagedMemberFactory implements MemberFactory {
         throw new IllegalArgumentException("Member must be a constructor, method or field.");
     }
 
-    private <T, E extends Member & AnnotatedElement> Node insert(Node node, String name, TypeInfo<T> info) throws KeyAlreadyExistsException {
+    private <T, E extends Member & AnnotatedElement> Node insert(Node node, String name, TypeAssembly<T> type, MemberAssembly<T, E> assembly) throws KeyAlreadyExistsException {
         if(node == null) {
             size++;
-            return new Node(name, info);
+            return new Node(name, type, assembly);
         }
         int cmp = node.compareTo(name);
-        if(cmp == 0 && node.get(info.assembly))
         switch (cmp) {
             case 0 -> {
-                if (node.get(type).add(assembly)) size++;
+                if (node.get_entry(type).add(assembly)) size++;
                 else throw new KeyAlreadyExistsException("Member '" + assembly + "' already exists in node '" + node + "'.");
             }
             case 1 -> node.left = insert(node.left, name, type, assembly);
@@ -195,17 +193,17 @@ final class ManagedMemberFactory implements MemberFactory {
 
         private final String name;
         private Node left, right;
-        private TypeInfo<?> info;
+        private Entry<?> entry;
         private byte color;
-        transient TypeInfo<?> current;
+        private transient Entry<?> current;
 
         private Node(String name) {
             this.name = name;
         }
 
-        private <T> Node(String name, TypeInfo<T> info) {
+        private <T> Node(String name, TypeAssembly<T> type, MemberAssembly<T, ?>... members) {
             this(name);
-            this.info = info;
+            this.entry = new Entry<>(type, members);
         }
 
         private boolean is_red() {
@@ -237,20 +235,20 @@ final class ManagedMemberFactory implements MemberFactory {
             else this.to_red();
         }
 
-        private <T> TypeInfo<T> get(TypeAssembly<T> type) {
-            if(this.current != null && this.current.assembly == type) return (TypeInfo<T>) this.current;
-            if(this.info != null) {
-                this.current = this.info.find(type);
-                return (TypeInfo<T>) this.current;
+        private <T> Entry<T> get_entry(TypeAssembly<T> type) {
+            if(this.current != null && this.current.type == type) return (Entry<T>) this.current;
+            if(this.entry != null) {
+                this.current = this.entry.getByType(type);
+                return (Entry<T>) this.current;
             }
-            this.info = new TypeInfo<>(type);
-            this.current = this.info;
-            return (TypeInfo<T>) this.current;
+            this.entry = new Entry<>(type);
+            this.current = this.entry;
+            return (Entry<T>) this.current;
         }
 
         private Stream<MemberAssembly<?, ?>> get_members() {
             Stream<MemberAssembly<?, ?>> members = Stream.empty();
-            TypeInfo<?> current = this.info;
+            Entry<?> current = this.entry;
             while(current != null) {
                 members = Stream.concat(members, current.members.stream());
                 current = current.next;
@@ -260,7 +258,7 @@ final class ManagedMemberFactory implements MemberFactory {
 
         @Override
         public int compareTo(@NotNull ManagedMemberFactory.Node o) {
-            return Integer.compare(name.hashCode(), o.name.hashCode());
+            return Integer.compare(name.hashCode(), o.hashCode());
         }
 
         int compareTo(String name) {
@@ -268,15 +266,20 @@ final class ManagedMemberFactory implements MemberFactory {
         }
     }
 
-    static final class TypeInfo<T> extends ManagedTypeFactory.TypeInfo<T> {
+    static final class Entry<T> {
 
-        private TypeInfo<?> next;
+        private final TypeAssembly<T> type;
 
-        private TypeInfo(TypeAssembly<T> type, List<MemberAssembly<T, ?>> members) {
-            super(type, members);
+        private final List<MemberAssembly<T, ?>> members;
+
+        private Entry<?> next;
+
+        private Entry(TypeAssembly<T> type, List<MemberAssembly<T, ?>> members) {
+            this.type = type;
+            this.members = members;
         }
 
-        private TypeInfo(TypeAssembly<T> type, MemberAssembly<T, ?>... members) {
+        private Entry(TypeAssembly<T> type, MemberAssembly<T, ?>... members) {
             this(type, Lists.newArrayList(members));
         }
 
@@ -294,16 +297,41 @@ final class ManagedMemberFactory implements MemberFactory {
             return this.members.add(member);
         }
 
-        public TypeInfo<?> find(TypeAssembly<?> type) {
-            TypeInfo<?> current = this, tail = null;
+        public Entry<?> getByType(TypeAssembly<?> type) {
+            Entry<?> current = this, tail = null;
             while(current != null) {
-                if(current.assembly.equals(type)) return current;
+                if(current.type.equals(type)) return current;
                 tail = current;
                 current = current.next;
             }
-            current = new TypeInfo<>(type);
+            current = new Entry<>(type);
             tail.next = current;
             return current;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Entry<?> entry = (Entry<?>) o;
+            if (!Objects.equals(type, entry.type)) return false;
+            return Objects.equals(members, entry.members);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = type != null ? type.hashCode() : 0;
+            result = 31 * result + (members != null ? members.hashCode() : 0);
+            return result;
+        }
+
+        @Override
+        public String toString() {
+            return "Entry{" +
+                    "type=" + type +
+                    ", members=" + members +
+                    ", next=" + next +
+                    '}';
         }
     }
 }

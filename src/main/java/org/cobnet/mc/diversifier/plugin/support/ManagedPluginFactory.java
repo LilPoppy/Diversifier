@@ -12,7 +12,7 @@ import java.util.*;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-abstract sealed class ManagedPluginFactory<T extends ProceduralPlugin<T>> extends AbstractProceduralPlatformContext<T> implements PluginFactory permits DynamicProxyFactory {
+abstract sealed class ManagedPluginFactory<T extends ProceduralPlugin<T>> extends InternalPlatformContext<T> implements PluginFactory permits DynamicProxyFactory {
 
     private final TypeFactory factory;
 
@@ -23,6 +23,11 @@ abstract sealed class ManagedPluginFactory<T extends ProceduralPlugin<T>> extend
     protected ManagedPluginFactory(T plugin) {
         super(plugin);
         this.factory = new ManagedTypeFactory();
+    }
+
+    @Override
+    public @NotNull PluginFactory getPluginFactory() {
+        return this;
     }
 
     @Override
@@ -73,7 +78,7 @@ abstract sealed class ManagedPluginFactory<T extends ProceduralPlugin<T>> extend
                     else node.children.add(type);
                 }
             }
-            Diversifier.getLogger().log(LoggerLevel.DEBUG, "Loaded " + factory.getSize() + " types for '" + plugin + "' in " + (System.currentTimeMillis() - ms) + "ms.");
+            Diversifier.getPlatformContext().getPlugin().getLogger().log(LoggerLevel.DEBUG, "Loaded " + factory.getSize() + " types for '" + plugin + "' in " + (System.currentTimeMillis() - ms) + "ms.");
             return assembly;
         }
     }

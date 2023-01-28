@@ -10,4 +10,6 @@ public interface ManagedPlugin {
 
     public Logger getLogger();
 
+    public PluginInfo getPluginInfo();
+
 }

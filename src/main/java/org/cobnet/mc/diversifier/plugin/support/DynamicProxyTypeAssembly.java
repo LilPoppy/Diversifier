@@ -8,7 +8,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.List;
 
 public sealed class DynamicProxyTypeAssembly<T> extends ManagedTypeAssembly<T> implements ProxyTypeAssembly<T> permits DynamicProxyAnnotationTypeAssembly {
@@ -16,9 +16,16 @@ public sealed class DynamicProxyTypeAssembly<T> extends ManagedTypeAssembly<T> i
     @Getter
     protected final TypeAssembly<? super T> original;
 
+    private final Field field;
+
     protected DynamicProxyTypeAssembly(PluginAssembly<?> plugin, TypeAssembly<? super T> type, Class<T> proxy, List<MemberAssembly<T, ?>> members) {
         super(plugin, proxy, members);
         this.original = type;
+        try {
+            this.field = this.instance.getDeclaredField(DynamicProxyFactory.PROXY_CONTEXT_FIELD);
+        } catch (NoSuchFieldException e) {
+            throw new ProxyException("Cannot find proxy context field", e);
+        }
     }
 
     @Override
@@ -57,27 +64,32 @@ public sealed class DynamicProxyTypeAssembly<T> extends ManagedTypeAssembly<T> i
     }
 
     @Override
-    public @NotNull T create(Object... args) throws ProxyException {
-        return (T) this.create(this.get().getSimpleName(), ProxyScope.SINGLETON, args);
+    @SuppressWarnings("unchecked")
+    public @NotNull T create(String name, Object... args) throws ProxyException {
+        return (T) this.create(name, ProxyScope.SINGLETON, args);
     }
 
-    //可以在拦截器中设置当对象被创建时判断是否加入到代理工厂中
     @Override
+    @SuppressWarnings("unchecked")
     public @NotNull ProxyContext<T> create(String name, Scope scope, Object... args) throws ProxyException {
         try {
+            ProxyFactory factory = this.getPluginAssembly().getParent().getContext().getProxyFactory();
             T instance = super.create(args);
-            if(ProxyContext.is(instance)) {
+            if(ProxyContext.is(instance) && factory instanceof DynamicProxyFactory<?> dynamic) {
                 ProxyContext<T> context = create_context(name, scope, instance);
-                Field field = this.get().getDeclaredField(DynamicProxyFactory.PROXY_CONTEXT_FIELD);
                 field.setAccessible(true);
                 field.set(instance, context);
-                field.setAccessible(false);
-                return context;
+                return (ProxyContext<T>) dynamic.insert(context).context;
             }
-            throw new ProxyException("The proxy class " + this.get().getName() + " does not implement ProxyContext");
-        } catch (NoSuchMethodException | InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchFieldException e) {
+            throw new ProxyException("The proxy class " + this.getName() + " does not implement ProxyContext");
+        } catch (Throwable e) {
             throw new ProxyException("Failed to create proxy for " + original.getName(), e);
         }
+    }
+
+    @Override
+    public @NotNull ProxyBuilder.Singleton<T> build(String name, Object... args) {
+        return new DynamicSingletonBuilder(name, args);
     }
 
     protected DynamicProxyContext<T> create_context(String name, Scope scope, T instance) {
@@ -86,9 +98,131 @@ public sealed class DynamicProxyTypeAssembly<T> extends ManagedTypeAssembly<T> i
 
     private record DynamicProxyInfo<T>(@Getter String name, @Getter Scope scope, @Getter ProxyTypeAssembly<T> assembly, @Getter T instance) implements ProxyInformation<T> {}
 
+    sealed abstract class DynamicProxyBuilder implements ProxyBuilder<T> permits DynamicPrototypeBuilder, DynamicSingletonBuilder {
+
+        protected final Scope scope;
+
+        protected String name;
+
+        protected final Object[] args;
+
+        DynamicProxyBuilder(Scope scope, String name, Object... args) {
+            this(scope, args);
+            this.name = name;
+        }
+
+        DynamicProxyBuilder(Scope scope, Object... args) {
+            this.scope = scope;
+            this.args = args;
+        }
+
+        @Override
+        public @NotNull ProxyBuilder<T> name(@NotNull String name) {
+            this.name = name;
+            return this;
+        }
+    }
+
+    final class DynamicSingletonBuilder extends DynamicProxyBuilder implements ProxyBuilder.Singleton<T> {
+
+        DynamicSingletonBuilder(String name, Object... args) {
+            super(ProxyScope.SINGLETON, name, args);
+        }
+
+        DynamicSingletonBuilder(Object... args) {
+            this(DynamicProxyTypeAssembly.this.getName(), args);
+        }
+
+        @Override
+        public @NotNull T build() throws ProxyException {
+            return DynamicProxyTypeAssembly.this.create(this.name, ProxyScope.SINGLETON, this.args).getInstance();
+        }
+
+        @Override
+        public @NotNull ProxyBuilder.Singleton<T> name(@NotNull String name) {
+            return (Singleton<T>) super.name(name);
+        }
+
+        @Override
+        public @NotNull <E> ProxyBuilder.Prototype<T, E> prototype(@NotNull E carrier) {
+            return new DynamicPrototypeBuilder<>(carrier, this.name.hashCode() == DynamicProxyTypeAssembly.this.getName().hashCode() ? null : this.name, this.args);
+        }
+    }
+
+    sealed class DynamicPrototypeBuilder<E> extends DynamicProxyBuilder implements ProxyBuilder.Prototype<T, E> permits DynamicProxyAnnotationTypeAssembly.DynamicAnnotationProxyBuilder{
+
+        protected final NamedCarrier<E> carrier;
+
+        DynamicPrototypeBuilder(E carrier, Object... args) {
+            this(carrier, null, args);
+        }
+
+        DynamicPrototypeBuilder(E carrier, String name, Object... args) {
+            this(new NamedCarrier<>(carrier), name, args);
+        }
+
+        private DynamicPrototypeBuilder(NamedCarrier<E> carrier, String name, Object... args) {
+            super(ProxyScope.PROTOTYPE, name == null ? carrier.getName() : String.join("_", carrier.getName(), name), args);
+            this.carrier = carrier;
+        }
+
+
+        @Override
+        public @NotNull ProxyBuilder.Prototype<T, E> carrier(@NotNull E carrier) {
+            this.carrier.element = carrier;
+            return this;
+        }
+
+        @Override
+        public @NotNull Singleton<T> singleton() {
+            return new DynamicSingletonBuilder(this.name);
+        }
+
+        @Override
+        public @NotNull ProxyBuilder.Prototype<T, E> name(@NotNull String name) {
+            return (Prototype<T, E>) super.name(name);
+        }
+
+        @Override
+        public @NotNull T build() throws ProxyException {
+            ProxyContext<T> context = DynamicProxyTypeAssembly.this.create(name, scope, args);
+            if(context instanceof DynamicProxyContext<T> dynamic) {
+                if(dynamic.carrier != null) throw new ProxyException("The proxy context of " + "'" + dynamic.getInstance() + "'" + "is already bound to " + dynamic.carrier);
+                dynamic.carrier = carrier;
+                return dynamic.getInstance();
+            }
+            throw new ProxyException("The proxy class " + carrier.getName() + " does not use correct proxy context.");
+        }
+    }
+
+    final class NamedCarrier<E> {
+
+        transient E element;
+
+        NamedCarrier(E element) {
+            this.element = element;
+        }
+
+        public String getName() {
+            if(element instanceof Class<?> type) return name(type.getName());
+            if(element instanceof Field field) return name(field.getName());
+            if(element instanceof Method method) return name(method.getName());
+            if(element instanceof Assembly<?,?> assembly) return name(assembly.getName());
+            return name(element == null ? null : element.toString());
+        }
+
+        private String name(String name) {
+            if(name == null) return DynamicProxyTypeAssembly.this.getName();
+            return String.join("$", DynamicProxyTypeAssembly.this.getName(), name);
+        }
+    }
+
+
     public static sealed class DynamicProxyContext<T> implements ProxyContext<T> permits DynamicProxyAnnotationTypeAssembly.DynamicProxyContext {
 
         private final ProxyInformation<T> info;
+
+        protected Object carrier;
 
         DynamicProxyContext(String name, Scope scope, ProxyTypeAssembly<T> assembly, T instance) {
             this.info = new DynamicProxyInfo<>(name, scope, assembly, instance);
@@ -115,7 +249,8 @@ public sealed class DynamicProxyTypeAssembly<T> extends ManagedTypeAssembly<T> i
         }
 
         @Override
-        public <E extends ProxyContext<T>> @NotNull E getProxyContextInstance() {
+        @SuppressWarnings("unchecked")
+        public <E extends ProxyContext<T>> @NotNull E getDelegate() {
             return (E) this;
         }
     }

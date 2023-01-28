@@ -4,12 +4,17 @@ import lombok.Getter;
 import org.cobnet.mc.diversifier.Diversifier;
 import org.cobnet.mc.diversifier.plugin.PluginConfiguration;
 import org.cobnet.mc.diversifier.plugin.Version;
+import org.cobnet.mc.diversifier.utils.StringUtils;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public record ComparableVersion(@Getter String version) implements Version {
+
+    public ComparableVersion(int... version) {
+        this(String.join(".", Arrays.stream(version).mapToObj(String::valueOf).toArray(String[]::new)));
+    }
 
     private final static Map<String, Map<String, AtomicInteger>> DP = new HashMap<>();
 

@@ -25,7 +25,7 @@ final class ManagedTypeFactory implements TypeFactory {
 
     private transient TypeAssembly<?> current;
 
-    transient PackageNode node;
+    transient PackageNode record;
 
     transient MemberFactory factory;
 
@@ -90,8 +90,10 @@ final class ManagedTypeFactory implements TypeFactory {
         Objects.requireNonNull(assembly, "Assembly cannot be null.");
         Objects.requireNonNull(packageName, "Package name cannot be null.");
         Objects.requireNonNull(className, "Class name cannot be null.");
+        E type = null;
         Node node = get_node(packageName);
-        E type = (E) node.get(className).assembly;
+        TypeInfo<E> info = (TypeInfo<E>) node.get(className);
+        if(info != null) type = (E) info.assembly;
         if(type != null) return type;
         try {
             String path = packageName + "." + className;
@@ -125,6 +127,7 @@ final class ManagedTypeFactory implements TypeFactory {
         TypeInfo<?> info;
         if((info = node.types.put(name, new TypeInfo<>(type, members))) == null) size++;
         else {
+            System.out.println("Put: " + name);
             node.types.put(name, info);
             throw new IllegalStateException("Type already exists: " + name);
         }
@@ -161,7 +164,7 @@ final class ManagedTypeFactory implements TypeFactory {
         return null;
     }
 
-    <T, E extends ProxyTypeAssembly<? extends T>> E get_proxy(Class<T> type) {
+    <T, E extends ProxyTypeAssembly<? extends T>> E get_proxy(TypeAssembly<T> type) {
         String name = type.getSimpleName();
         Node node = get_node(type.getPackageName());
         if(node == null) return null;
@@ -190,9 +193,17 @@ final class ManagedTypeFactory implements TypeFactory {
     }
 
     @Override
-    public @Nullable <T, E extends ProxyTypeAssembly<? extends T>> E getProxyTypeAssembly(@NotNull Class<T> type) {
+    public @Nullable <T, E extends ProxyTypeAssembly<? extends T>> E getProxyTypeAssembly(@NotNull TypeAssembly<T> type) {
         Objects.requireNonNull(type, "Type cannot be null.");
         return get_proxy(type);
+    }
+
+    @Override
+    public <T, E extends ProxyTypeAssembly<? extends T>> @Nullable E getProxyTypeAssembly(@NotNull Class<T> type) {
+        Objects.requireNonNull(type, "Type cannot be null.");
+        TypeAssembly<T> assembly = getTypeAssembly(type);
+        assert assembly != null;
+        return getProxyTypeAssembly(assembly);
     }
 
     @Override
@@ -249,7 +260,6 @@ final class ManagedTypeFactory implements TypeFactory {
     }
 
     private Node get_node(String packageName) {
-        if(this.node != null && this.node.name.equals(packageName)) return this.node.node;
         char[] chars = packageName.toCharArray();
         Node node = root;
         for (int i = 0, j = 0, n = chars.length, k = 0; i < n; i++, k = BooleanUtils.toIntAsBinary(LoopUtils.isTouchEnd(i, n))) {
@@ -259,8 +269,7 @@ final class ManagedTypeFactory implements TypeFactory {
                 j = i + 1;
             }
         }
-        this.node = new PackageNode(packageName, node);
-        return this.node.node;
+        return node;
     }
 
     final static class PackageNode {

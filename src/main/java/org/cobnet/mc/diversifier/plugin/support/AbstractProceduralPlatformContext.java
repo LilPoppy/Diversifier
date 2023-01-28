@@ -1,15 +1,14 @@
 package org.cobnet.mc.diversifier.plugin.support;
 
-import org.cobnet.mc.diversifier.plugin.PluginFactory;
-import org.cobnet.mc.diversifier.plugin.ProceduralPlatformContext;
-import org.cobnet.mc.diversifier.plugin.ProxyFactory;
-import org.cobnet.mc.diversifier.plugin.TypeFactory;
+import org.cobnet.mc.diversifier.plugin.*;
 import org.jetbrains.annotations.NotNull;
 
-public abstract sealed class AbstractProceduralPlatformContext<T extends ProceduralPlugin<T>> extends AbstractConfigurablePlatformContext<T> implements ProceduralPlatformContext<T> permits ManagedPluginFactory {
+import java.util.Locale;
 
-    protected AbstractProceduralPlatformContext(T plugin) {
-        super(plugin);
+public non-sealed abstract class AbstractProceduralPlatformContext<T extends ProceduralPlugin<T> & PlatformAssembly<T>> extends AbstractConfigurablePlatformContext<T> implements ProceduralPlatformContext<T> {
+
+    protected AbstractProceduralPlatformContext(T plugin, Locale locale) {
+        super(plugin, locale);
     }
 
     @Override
@@ -18,12 +17,12 @@ public abstract sealed class AbstractProceduralPlatformContext<T extends Procedu
     }
 
     @Override
-    public @NotNull PluginFactory getPluginFactory() {
-        return this;
+    public @NotNull TypeFactory getTypeFactory() {
+        return this.getPluginFactory().getTypeFactory();
     }
 
     @Override
-    public @NotNull TypeFactory getTypeFactory() {
-        return this.getPluginFactory().getTypeFactory();
+    public @NotNull MemberFactory getMemberFactory() {
+        return this.getTypeFactory().getMemberFactory();
     }
 }

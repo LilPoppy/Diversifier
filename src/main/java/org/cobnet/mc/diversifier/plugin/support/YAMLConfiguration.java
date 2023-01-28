@@ -2,9 +2,8 @@ package org.cobnet.mc.diversifier.plugin.support;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import org.cobnet.mc.diversifier.plugin.PluginConfiguration;
 import org.cobnet.mc.diversifier.utils.BooleanUtils;
-import org.cobnet.mc.diversifier.utils.Delegate;
+import org.cobnet.mc.diversifier.utils.InvokeWith;
 import org.cobnet.mc.diversifier.utils.LoopUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -12,7 +11,6 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class YAMLConfiguration extends AbstractConfiguration {
@@ -20,7 +18,7 @@ public class YAMLConfiguration extends AbstractConfiguration {
     private final File file;
 
     public YAMLConfiguration(File file) {
-        super(Delegate.of(new ObjectMapper(new YAMLFactory())).invoke((mapper) -> {
+        super(InvokeWith.of(new ObjectMapper(new YAMLFactory())).invoke((mapper) -> {
             try {
                 if(file.exists() && file.length() > 0) return mapper.readValue(file, HashMap.class);
                 file.getParentFile().mkdir();

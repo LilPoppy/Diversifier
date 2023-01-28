@@ -4,25 +4,41 @@ import lombok.Getter;
 import org.cobnet.mc.diversifier.plugin.*;
 import org.cobnet.mc.diversifier.plugin.annotation.Signal;
 import org.cobnet.mc.diversifier.plugin.annotation.Tester;
-import org.cobnet.mc.diversifier.plugin.support.AbstractPlatformContext;
+import org.cobnet.mc.diversifier.plugin.support.AbstractManagedPlatformContext;
+import org.cobnet.mc.diversifier.plugin.support.ComparableVersion;
 import org.cobnet.mc.diversifier.plugin.support.ProceduralPlugin;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.logging.Logger;
+import java.util.List;
 import java.util.stream.Stream;
 
 @Signal(name = "Diversifier")
 @Tester
-public record Diversifier<T extends ProceduralPlugin<T>>(@Getter Diversifier.PlatformContext<?> context) implements PlatformAssembly<T> {
+public record Diversifier<T extends ProceduralPlugin<T>>(@Getter Diversifier.PlatformContext<T> context) implements PlatformAssembly<T> {
 
     static Diversifier<?> INSTANCE;
 
+    @Getter
+    final static PluginInfo INFO = new PluginInfo() {
+        @Override
+        public @NotNull String getName() {
+            return "Diversifier";
+        }
+
+        @Override
+        public @NotNull List<String> getAuthors() {
+            return List.of("LilPoppy");
+        }
+
+        @Override
+        public @NotNull Version getVersion() {
+            return new ComparableVersion(1, 0, 0);
+        }
+    };
+
+
     public static ConfigurablePlatformContext<?> startup(ProceduralPlugin<?> plugin) {
         return plugin.create();
-    }
-
-    public static Logger getLogger() {
-        return Diversifier.getPlatformContext().getPlugin().getLogger();
     }
 
     public static PluginFactory getPluginFactory() {
@@ -64,15 +80,21 @@ public record Diversifier<T extends ProceduralPlugin<T>>(@Getter Diversifier.Pla
         return this.getChildrenAsStream().map(Assembly::getName).toArray(String[]::new);
     }
 
-    public static class PlatformContext<T extends ProceduralPlugin<T>> extends AbstractPlatformContext<T> {
+    @Override
+    public PluginInfo getPluginInfo() {
+        return this.context.getPlugin().getPluginInfo();
+    }
+
+    public static class PlatformContext<T extends ProceduralPlugin<T>> extends AbstractManagedPlatformContext<T> {
 
         protected PlatformContext(T plugin) {
             super(plugin);
-            Diversifier.INSTANCE = new Diversifier<T>(this);
+            Diversifier.INSTANCE = new Diversifier<>(this);
         }
 
-        public PlatformAssembly<?> getAssembly() {
-            return Diversifier.INSTANCE;
+        @Override
+        public final boolean isThirdParty(@NotNull PlatformAssembly<?> assembly) {
+            return !(assembly instanceof Diversifier);
         }
     }
 }
